@@ -259,19 +259,15 @@ class VUIEndpoints:
             return Response(json.dumps({'error': f'Agent "{vip_identity}" not found.'}), 400,
                             content_type='application/json')
 
-        def _agent_running(vip_identity):
-            peerlist = self._rpc('control', 'peerlist')
-            return True if vip_identity in peerlist else False
-
         if request_method == 'GET':
-            status = _agent_running(vip_identity)
+            status = self._agent_running(vip_identity)
             return Response(json.dumps({'running': status}), 200, content_type='application/json')
 
         elif request_method == 'PUT':
             if restart:
                 self._rpc('control', 'restart_agent', uuid, external_platform=platform)
             else:
-                if _agent_running(vip_identity):
+                if self._agent_running(vip_identity):
                     return Response(json.dumps({'error': f'Agent: {vip_identity} is already running.'}), 400,
                                     content_type='application/json')
                 self._rpc('control', 'start_agent', uuid, external_platform=platform)
@@ -348,6 +344,17 @@ class VUIEndpoints:
             except MethodNotFound or ValueError as e:
                 return Response(json.dumps({f'error': f'For agent {vip_identity}: {e}'}),
                                 400, content_type='application/json')
+
+    @endpoint
+    def handle_platforms_agents_health(self, env: dict, data: dict) -> Response:
+        path_info = env.get('PATH_INFO')
+        request_method = env.get("REQUEST_METHOD")
+        platform, vip_identity = re.match('^/vui/platforms/([^/]+)/agents/([^/]+)/health/?$', path_info).groups()
+        if not self._agent_running(vip_identity):
+            return Response(json.dumps({'error': f'No agent "{vip_identity}" is running.'}), 400,
+                            content_type='application/json')
+        else:
+            self._rpc(vip_identity, 'health.get_status', external_platform=platform)
 
     @endpoint
     def handle_platforms_agents_rpc(self, env: dict, data: dict) -> Response:
@@ -688,6 +695,17 @@ class VUIEndpoints:
         #     self.pubsub_manager.close_socket(access_token, topic)
         #     return Response(status=204)
 
+
+    def handle_platforms_health(self, env: dict, data: dict) -> Response:
+        path_info = env.get('PATH_INFO')
+        request_method = env.get("REQUEST_METHOD")
+        platform = re.match('^/vui/platforms/([^/]+)/health/?$', path_info).groups()[0]
+
+        if request_method == 'GET':
+            platform_health = self._rpc('platform.health', 'get_platform_health', external_platform=platform)
+            return Response(json.dumps(platform_health), 200, content_type='application/json')
+
+
     @endpoint
     def handle_platforms_historians(self, env: dict, data: dict) -> Response:
         path_info = env.get('PATH_INFO')
@@ -835,6 +853,10 @@ class VUIEndpoints:
         if request_method == 'DELETE':
             self._rpc('control', 'clear_status', True, external_platform=platform)
             return Response(status=204)
+
+    def _agent_running(self, vip_identity):
+        peerlist = self._rpc('control', 'peerlist')
+        return True if vip_identity in peerlist else False
 
     def _find_active_sub_routes(self, segments: list, path_info: str = None, enclose=True) -> dict or list:
         """
