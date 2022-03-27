@@ -162,6 +162,7 @@ class VUIEndpoints:
             (re.compile('^/vui/platforms/[^/]+/agents/?$'), 'callable', self.handle_platforms_agents),
             (re.compile('^/vui/platforms/[^/]+/agents/[^/]+/?$'), 'callable', self.handle_platforms_agents_agent),
             (re.compile('^/vui/platforms/[^/]+/agents/[^/]+/enabled/?$'), 'callable', self.handle_platforms_agents_enabled),
+            (re.compile('^/vui/platforms/[^/]+/agents/[^/]+/health/?$'), 'callable', self.handle_platforms_agents_health),
             (re.compile('^/vui/platforms/[^/]+/agents/[^/]+/rpc/?$'), 'callable', self.handle_platforms_agents_rpc),
             (re.compile('^/vui/platforms/[^/]+/agents/[^/]+/rpc/[^/]+/?$'), 'callable', self.handle_platforms_agents_rpc_method),
             (re.compile('^/vui/platforms/[^/]+/agents/[^/]+/running/?$'), 'callable', self.handle_platforms_agents_running),
@@ -169,6 +170,7 @@ class VUIEndpoints:
             (re.compile('^/vui/platforms/[^/]+/agents/[^/]+/tag/?$'), 'callable', self.handle_platforms_agents_tag),
             (re.compile('^/vui/platforms/[^/]+/devices/?$'), 'callable', self.handle_platforms_devices),
             (re.compile('^/vui/platforms/[^/]+/devices/.*/?$'), 'callable', self.handle_platforms_devices),
+            (re.compile('^/vui/platforms/[^/]+/health/?$'), 'callable', self.handle_platforms_health),
             (re.compile('^/vui/platforms/[^/]+/historians/?$'), 'callable', self.handle_platforms_historians),
             (re.compile('^/vui/platforms/[^/]+/historians/[^/]+/?$'), 'callable', self.handle_platforms_historians_historian),
             (re.compile('^/vui/platforms/[^/]+/historians/[^/]+/topics/?$'), 'callable', self.handle_platforms_historians_historian_topics),
@@ -345,16 +347,24 @@ class VUIEndpoints:
                 return Response(json.dumps({f'error': f'For agent {vip_identity}: {e}'}),
                                 400, content_type='application/json')
 
-    @endpoint
+    #@endpoint
     def handle_platforms_agents_health(self, env: dict, data: dict) -> Response:
+        _log.debug("In agents_health")
         path_info = env.get('PATH_INFO')
         request_method = env.get("REQUEST_METHOD")
         platform, vip_identity = re.match('^/vui/platforms/([^/]+)/agents/([^/]+)/health/?$', path_info).groups()
-        if not self._agent_running(vip_identity):
-            return Response(json.dumps({'error': f'No agent "{vip_identity}" is running.'}), 400,
-                            content_type='application/json')
-        else:
-            self._rpc(vip_identity, 'health.get_status', external_platform=platform)
+        _log.debug(f"platform: {platform}, vip_identity, {vip_identity}")
+        if request_method == 'GET':
+            _log.debug("In the GET")
+            if not self._agent_running(platform, vip_identity):
+                _log.debug("In if block")
+                return Response(json.dumps({'error': f'No agent "{vip_identity}" is running.'}), 400,
+                                content_type='application/json')
+            else:
+                _log.debug("In else block")
+                health = self._rpc(vip_identity, 'health.get_status', external_platform=platform)
+                _log.debug(f"health: {health}")
+                return Response(json.dumps(health), 200, content_type='application/json')
 
     @endpoint
     def handle_platforms_agents_rpc(self, env: dict, data: dict) -> Response:
@@ -695,7 +705,7 @@ class VUIEndpoints:
         #     self.pubsub_manager.close_socket(access_token, topic)
         #     return Response(status=204)
 
-
+    #@endpoint
     def handle_platforms_health(self, env: dict, data: dict) -> Response:
         path_info = env.get('PATH_INFO')
         request_method = env.get("REQUEST_METHOD")
@@ -704,7 +714,6 @@ class VUIEndpoints:
         if request_method == 'GET':
             platform_health = self._rpc('platform.health', 'get_platform_health', external_platform=platform)
             return Response(json.dumps(platform_health), 200, content_type='application/json')
-
 
     @endpoint
     def handle_platforms_historians(self, env: dict, data: dict) -> Response:
@@ -854,8 +863,8 @@ class VUIEndpoints:
             self._rpc('control', 'clear_status', True, external_platform=platform)
             return Response(status=204)
 
-    def _agent_running(self, vip_identity):
-        peerlist = self._rpc('control', 'peerlist')
+    def _agent_running(self, platform, vip_identity):
+        peerlist = self._rpc('control', 'peerlist', external_platform=platform)
         return True if vip_identity in peerlist else False
 
     def _find_active_sub_routes(self, segments: list, path_info: str = None, enclose=True) -> dict or list:

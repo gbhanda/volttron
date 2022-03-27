@@ -284,6 +284,13 @@ def _mock_agents_rpc(peer, meth, *args, external_platform=None, **kwargs):
         return [*args, kwargs['foo'], kwargs['bar']]
     elif peer == 'agents_rpc' and meth == 'args_only':
         return [*args]
+    elif peer == 'platform.health' and meth == 'get_platform_health':
+        return {'control': {'peer': 'control', 'service_agent': True, 'connected': '2022-03-27T11:38:42.902620',
+                            'last_heartbeat': '2022-03-27T11:46:42.934051', 'message': 'GOOD'},
+                'run1': {'peer': 'run1', 'service_agent': False, 'connected': '2022-03-27T11:38:42.905573',
+                         'last_heartbeat': '2022-03-27T11:46:42.934098', 'message': 'GOOD'}}
+    elif peer == 'run1' and meth == 'health.get_status':
+        return {'status': 'GOOD', 'context': None, 'last_updated': '2022-03-27T15:41:32.293441+00:00'}
 
 
 @pytest.mark.parametrize(
@@ -554,7 +561,7 @@ def test_handle_platforms_agents_running_delete_response(mock_platform_web_servi
 
 @pytest.mark.parametrize("method, status", gen_response_codes(['GET']))
 def test_handle_platforms_agents_health_status_code(mock_platform_web_service, method, status):
-    env = get_test_web_env(f'/vui/platforms/my_instance_name/agents/{vip_identity}/health', method=method,
+    env = get_test_web_env(f'/vui/platforms/my_instance_name/agents/run1/health', method=method,
                            HTTP_AUTHORIZATION='Bearer foo')
     vui_endpoints = VUIEndpoints(mock_platform_web_service)
     vui_endpoints._rpc = _mock_agents_rpc
@@ -562,6 +569,7 @@ def test_handle_platforms_agents_health_status_code(mock_platform_web_service, m
     check_response_codes(response, status)
 
 
+@pytest.mark.parametrize("vip_identity, expected", [
 ('run1', {'running': True}),
 ('stopped1', {'running': False}),
 ('not_exist', {'error': 'Agent "not_exist" not found.'})])
@@ -569,31 +577,30 @@ def test_handle_platforms_agents_health_get_response(mock_platform_web_service, 
     path = f'/vui/platforms/my_instance_name/agents/{vip_identity}/health'
     env = get_test_web_env(path, method='GET', HTTP_AUTHORIZATION='Bearer foo')
     vui_endpoints = VUIEndpoints(mock_platform_web_service)
-    vui_endpoints._rpc = _mock_agents_rpc('peer', 'meth', external_platforms = 'my_instance_name')
-    elif('peer' == 'run1' and 'meth' == 'health.get_status'):
-        _mock_agents_rpc('platform.health', 'health.get_status')
+    vui_endpoints._rpc = _mock_agents_rpc
     response = vui_endpoints.handle_platforms_agents_health(env, {})
     assert json.loads(response.response[0]) == expected
 
+
 @pytest.mark.parametrize("method, status", gen_response_codes(['GET']))
 def test_handle_platforms_health_status_code(mock_platform_web_service, method, status):
-    env = get_test_web_env('/vui/platforms/my_instance_name/agents/run1/health', method=method,
+    env = get_test_web_env('/vui/platforms/my_instance_name/health', method=method,
                            HTTP_AUTHORIZATION='Bearer foo')
     vui_endpoints = VUIEndpoints(mock_platform_web_service)
     vui_endpoints._rpc = _mock_agents_rpc
     response = vui_endpoints.handle_platforms_health(env, {})
     check_response_codes(response, status)
 
-def test_handle_platforms_health_get_response(mock_platform_web_service, vip_identity, expected):
-    path = f'/vui/platforms/my_instance_name/agents/{vip_identity}/health'
+
+def test_handle_platforms_health_get_response(mock_platform_web_service):
+    path = f'/vui/platforms/my_instance_name/health'
     env = get_test_web_env(path, method='GET', HTTP_AUTHORIZATION='Bearer foo')
     vui_endpoints = VUIEndpoints(mock_platform_web_service)
-    vui_endpoints._rpc = _mock_agents_rpc('peer', 'meth', external_platforms = 'my_instance_name')
-    elif ('peer' == 'platform.health' and 'meth' == 'get_health_status'):
-        _mock_agents_rpc('platform.health', 'get_health_status')
-
+    vui_endpoints._rpc = _mock_agents_rpc
     response = vui_endpoints.handle_platforms_health(env, {})
-    assert json.loads(response.response[0]) == expected
+    actual = json.loads(response.response[0])
+    assert isinstance(actual, dict)
+    #assert all([isinstance(x, dict) for x in actual.values()])
 
 
 @pytest.mark.parametrize("method, status", gen_response_codes(['GET'], []))
