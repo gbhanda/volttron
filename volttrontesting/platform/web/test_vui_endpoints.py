@@ -565,14 +565,14 @@ def test_handle_platforms_agents_health_status_code(mock_platform_web_service, m
                            HTTP_AUTHORIZATION='Bearer foo')
     vui_endpoints = VUIEndpoints(mock_platform_web_service)
     vui_endpoints._rpc = _mock_agents_rpc
-    response = vui_endpoints.handle_platforms_agents_running(env, {})
+    response = vui_endpoints.handle_platforms_agents_health(env, {})
     check_response_codes(response, status)
 
 
 @pytest.mark.parametrize("vip_identity, expected", [
-('run1', {'running': True}),
-('stopped1', {'running': False}),
-('not_exist', {'error': 'Agent "not_exist" not found.'})])
+('run1', {'status': 'GOOD', 'context': None, 'last_updated': '2022-03-27T15:41:32.293441+00:00'}),
+('stopped1', {'error': f'No agent "stopped1" is running.'}),
+('not_exist', {'error': 'No agent "not_exist" is running.'})])
 def test_handle_platforms_agents_health_get_response(mock_platform_web_service, vip_identity, expected):
     path = f'/vui/platforms/my_instance_name/agents/{vip_identity}/health'
     env = get_test_web_env(path, method='GET', HTTP_AUTHORIZATION='Bearer foo')
@@ -600,7 +600,7 @@ def test_handle_platforms_health_get_response(mock_platform_web_service):
     response = vui_endpoints.handle_platforms_health(env, {})
     actual = json.loads(response.response[0])
     assert isinstance(actual, dict)
-    #assert all([isinstance(x, dict) for x in actual.values()])
+    assert all([isinstance(x, dict) for x in actual.values()])
 
 
 @pytest.mark.parametrize("method, status", gen_response_codes(['GET'], []))

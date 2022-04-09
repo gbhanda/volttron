@@ -347,23 +347,18 @@ class VUIEndpoints:
                 return Response(json.dumps({f'error': f'For agent {vip_identity}: {e}'}),
                                 400, content_type='application/json')
 
-    #@endpoint
+    @endpoint
     def handle_platforms_agents_health(self, env: dict, data: dict) -> Response:
-        _log.debug("In agents_health")
         path_info = env.get('PATH_INFO')
         request_method = env.get("REQUEST_METHOD")
         platform, vip_identity = re.match('^/vui/platforms/([^/]+)/agents/([^/]+)/health/?$', path_info).groups()
         _log.debug(f"platform: {platform}, vip_identity, {vip_identity}")
         if request_method == 'GET':
-            _log.debug("In the GET")
             if not self._agent_running(platform, vip_identity):
-                _log.debug("In if block")
                 return Response(json.dumps({'error': f'No agent "{vip_identity}" is running.'}), 400,
                                 content_type='application/json')
             else:
-                _log.debug("In else block")
                 health = self._rpc(vip_identity, 'health.get_status', external_platform=platform)
-                _log.debug(f"health: {health}")
                 return Response(json.dumps(health), 200, content_type='application/json')
 
     @endpoint
@@ -705,7 +700,7 @@ class VUIEndpoints:
         #     self.pubsub_manager.close_socket(access_token, topic)
         #     return Response(status=204)
 
-    #@endpoint
+    @endpoint
     def handle_platforms_health(self, env: dict, data: dict) -> Response:
         path_info = env.get('PATH_INFO')
         request_method = env.get("REQUEST_METHOD")
