@@ -87,9 +87,6 @@ creating a user and password:
 
 .. image:: files/create_admin_user.png
 
-Once the web-users.json file exists, add a group called "vui" to the list of groups for any user which should
-have access to the API:
-
 .. code-block:: json
 
     {
@@ -107,6 +104,9 @@ set to ``https://localhost:8443`` the following HTTP request (with a proper
 ::
 
     GET https://localhost:8443/vui/
+
+Access to the API may be disabled by removing "vui" from the list of groups in ``$VOLTTRON_HOME/web-users.json`` for any user which should not have access
+to the API.
 
 Path Structure
 ---------------
@@ -138,6 +138,8 @@ following sections:
 - :ref:`Authentication <Authentication-Endpoints>`: Endpoints for authenticating to the the API.
 - :ref:`Platforms <Platforms-Endpoints>`: Endpoints for working with a particular platform.
     - :ref:`Agents <Platforms-Agents-Endpoints>`: Endpoints for working with agents on the platform.
+        - :ref:`Configs <Platforms-Agents-Configs-Endpoints>`: Endpoints for managing the configuration store for agents
+          on the platform.
         - :ref:`Enabled <Platforms-Agents-Enabled-Endpoints>`: Endpoints for enabling, disabling, and setting the
           start priority of agents on the platform.
         - :ref:`RPC <Platforms-Agents-Rpc-Endpoints>`: Endpoints allowing, discovery, inspection, and calling of
