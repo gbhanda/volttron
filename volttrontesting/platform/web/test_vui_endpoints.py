@@ -270,6 +270,58 @@ def _mock_agents_rpc(peer, meth, *args, external_platform=None, **kwargs):
                                                                'config2': {'setting1': 3, 'setting2': 4}}},
                               {'identity': 'run2', 'configs': {'config1': {'setting1': 5, 'setting2': 6},
                                                                'config2': {'setting1': 7, 'setting2': 8}}}]
+    auth_dict = {
+                    'allow_list': [
+                                    {'domain': None,
+                                     'address': None,
+                                     'mechanism': 'CURVE',
+                                     'credentials': 'e-v_K8vx6E5bfgI6uL5-I9m35kKWJQA062qLdfX-zEE',
+                                     'groups': [],
+                                     'roles': [],
+                                     'capabilities': {'edit_config_store': {'identity': 'platform.historian'}},
+                                     'rpc_method_authorizations': {'get_aggregate_topics': [],
+                                                                   'get_topic_list': [],
+                                                                   'get_topics_by_pattern': [],
+                                                                   'get_topics_metadata': [],
+                                                                   'get_version': [],
+                                                                   'insert': [],
+                                                                   'query': []},
+                                     'comments': 'Automatically added on agent install',
+                                     'user_id': 'platform.historian',
+                                     'identity': 'platform.historian',
+                                     'enabled': True},
+                                    {'domain': None,
+                                     'address': None,
+                                     'mechanism': 'CURVE',
+                                     'credentials': '_LMMJDPrgB3fxQPiznX3WcpgWovi31_FYpirt99rXEM',
+                                     'groups': [],
+                                     'roles': [],
+                                     'capabilities': {'edit_config_store': {'identity': 'platform.sysmon'}},
+                                     'rpc_method_authorizations': {'cpu_percent': [],
+                                                                   'disk_percent': [],
+                                                                   'memory_percent': [],
+                                                                   'reconfigure': []},
+                                     'comments': 'Automatically added on agent install',
+                                     'user_id': 'platform.sysmon',
+                                     'identity': 'platform.sysmon',
+                                     'enabled': True},
+                                    {'domain': '<domain>',
+                                     'address': '<address>',
+                                     'mechanism': 'NULL',
+                                     'credentials': '<public_key>',
+                                     'groups': ['<group1>', '<group2>'],
+                                     'roles': ['<role1>', '<role2>'],
+                                     'capabilities': {'<capability1>': None, '<capability2>': None},
+                                     'rpc_method_authorizations': {},
+                                     'comments': '<comments>',
+                                     'user_id': '<user_id>',
+                                     'identity': None,
+                                     'enabled': True}
+                                ],
+                    'deny_list': [],
+                    'groups': {},
+                    'roles': {},
+                    'version': {'major': 1, 'minor': 3}}
     if peer == 'config.store' and meth == 'manage_get':
         config_list = [a['configs'].get(args[1]) for a in config_definition_list if a['identity'] == args[0]]
         if not config_list or config_list == [None]:
@@ -300,6 +352,8 @@ def _mock_agents_rpc(peer, meth, *args, external_platform=None, **kwargs):
         return [*args, kwargs['foo'], kwargs['bar']]
     elif peer == 'agents_rpc' and meth == 'args_only':
         return [*args]
+    elif peer == 'platform.auth' and meth == 'auth_file.read':
+        return auth_dict
 
 
 @pytest.mark.parametrize(
@@ -807,6 +861,1995 @@ def test_handle_platforms_agents_tag_delete_response(mock_platform_web_service, 
                                                        external_platform='my_instance_name')])
     elif expected == '400':
         assert json.loads(response.response[0]) == {'error': "Agent 'not_exists' not found."}
+
+
+@pytest.mark.parametrize("method, status", gen_response_codes(['GET'], ['POST', 'DELETE']))
+def test_handle_platforms_auth_status_code(mock_platform_web_service, method, status):
+    env = get_test_web_env('/vui/platforms/my_instance_name/auths', method=method,
+                           HTTP_AUTHORIZATION='Bearer foo')
+    vui_endpoints = VUIEndpoints(mock_platform_web_service)
+    vui_endpoints._rpc = _mock_agents_rpc
+    response = vui_endpoints.handle_platforms_auths(env, {})
+    check_response_codes(response, status)
+
+
+@pytest.mark.parametrize("method, status", gen_response_codes(['GET'], ['PUT', 'DELETE']))
+def test_handle_platforms_auth_auth_status_code(mock_platform_web_service, method, status):
+    env = get_test_web_env('/vui/platforms/my_instance_name/auths/platform.historian', method=method,
+                           HTTP_AUTHORIZATION='Bearer foo')
+    vui_endpoints = VUIEndpoints(mock_platform_web_service)
+    vui_endpoints._rpc = _mock_agents_rpc
+    response = vui_endpoints.handle_platforms_auths(env, {})
+    check_response_codes(response, status)
+
+
+@pytest.mark.parametrize("records, domain, address, capabilities, roles, groups, mechanism, credentials, comments, "
+                         "enabled, rpc_method_authorizations, user_id, identity, expected",
+                         [
+                             (None, None, False, True, False, None, False, True, False, None, True, False, None,
+                              {
+                                 "route_options": {
+                                                    "platform.historian":
+                                                        "/vui/platforms/my_instance_name/auths/platform.historian",
+                                                    "platform.sysmon":
+                                                        "/vui/platforms/my_instance_name/auths/platform.sysmon",
+                                                    "<user_id>": "/vui/platforms/my_instance_name/auths/<user_id>"
+                                                }
+                                }),
+                             (False, False, True, False, True, False, True, False, True, False, True, False, None,
+                              {
+                                  "route_options": {
+                                      "platform.historian": "/vui/platforms/my_instance_name/auths/platform.historian",
+                                      "platform.sysmon": "/vui/platforms/my_instance_name/auths/platform.sysmon",
+                                      "<user_id>": "/vui/platforms/my_instance_name/auths/<user_id>"
+                                  }
+                              }),
+                             (True, False, True, None, True, None, True, None, True, None, True, None, True,
+                              {
+                                  "platform.historian": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.historian",
+                                      "record":  {
+                                                    'address': None,
+                                                    'mechanism': 'CURVE',
+                                                    'credentials': 'e-v_K8vx6E5bfgI6uL5-I9m35kKWJQA062qLdfX-zEE',
+                                                    'groups': [],
+                                                    'roles': [],
+                                                    'capabilities':
+                                                        {'edit_config_store': {'identity': 'platform.historian'}},
+                                                    'rpc_method_authorizations': {'get_aggregate_topics': [],
+                                                                                  'get_topic_list': [],
+                                                                                  'get_topics_by_pattern': [],
+                                                                                  'get_topics_metadata': [],
+                                                                                  'get_version': [],
+                                                                                  'insert': [],
+                                                                                  'query': []},
+                                                    'comments': 'Automatically added on agent install',
+                                                    'user_id': 'platform.historian',
+                                                    'identity': 'platform.historian',
+                                                    'enabled': True
+                                                }
+                                  },
+                                  "platform.sysmon": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.sysmon",
+                                      "record": {
+                                                    'address': None,
+                                                    'mechanism': 'CURVE',
+                                                    'credentials': '_LMMJDPrgB3fxQPiznX3WcpgWovi31_FYpirt99rXEM',
+                                                    'groups': [],
+                                                    'roles': [],
+                                                    'capabilities': {'edit_config_store':
+                                                                         {'identity': 'platform.sysmon'}},
+                                                    'rpc_method_authorizations': {'cpu_percent': [],
+                                                                                  'disk_percent': [],
+                                                                                  'memory_percent': [],
+                                                                                  'reconfigure': []},
+                                                    'comments': 'Automatically added on agent install',
+                                                    'user_id': 'platform.sysmon',
+                                                    'identity': 'platform.sysmon',
+                                                    'enabled': True
+                                                }
+                                  },
+                                  "<user_id>": {
+                                      "route": "/vui/platforms/my_instance_name/auths/<user_id>",
+                                      "record": {
+                                                    'address': '<address>',
+                                                    'mechanism': 'NULL',
+                                                    'credentials': '<public_key>',
+                                                    'groups': ['<group1>', '<group2>'],
+                                                    'roles': ['<role1>', '<role2>'],
+                                                    'capabilities': {'<capability1>': None, '<capability2>': None},
+                                                    'rpc_method_authorizations': {},
+                                                    'comments': '<comments>',
+                                                    'user_id': '<user_id>',
+                                                    'identity': None,
+                                                    'enabled': True
+                                                }
+                                  }
+                              }
+                              ),
+                             (True, False, None, True, None, True, None, True, None, True, None, True, None,
+                              {
+                                  "platform.historian": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.historian",
+                                      "record":  {
+                                                    'address': None,
+                                                    'mechanism': 'CURVE',
+                                                    'credentials': 'e-v_K8vx6E5bfgI6uL5-I9m35kKWJQA062qLdfX-zEE',
+                                                    'groups': [],
+                                                    'roles': [],
+                                                    'capabilities':
+                                                        {'edit_config_store': {'identity': 'platform.historian'}},
+                                                    'rpc_method_authorizations': {'get_aggregate_topics': [],
+                                                                                  'get_topic_list': [],
+                                                                                  'get_topics_by_pattern': [],
+                                                                                  'get_topics_metadata': [],
+                                                                                  'get_version': [],
+                                                                                  'insert': [],
+                                                                                  'query': []},
+                                                    'comments': 'Automatically added on agent install',
+                                                    'user_id': 'platform.historian',
+                                                    'identity': 'platform.historian',
+                                                    'enabled': True
+                                                }
+                                  },
+                                  "platform.sysmon": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.sysmon",
+                                      "record": {
+                                                    'address': None,
+                                                    'mechanism': 'CURVE',
+                                                    'credentials': '_LMMJDPrgB3fxQPiznX3WcpgWovi31_FYpirt99rXEM',
+                                                    'groups': [],
+                                                    'roles': [],
+                                                    'capabilities': {'edit_config_store':
+                                                                         {'identity': 'platform.sysmon'}},
+                                                    'rpc_method_authorizations': {'cpu_percent': [],
+                                                                                   'disk_percent': [],
+                                                                                   'memory_percent': [],
+                                                                                   'reconfigure': []},
+                                                    'comments': 'Automatically added on agent install',
+                                                    'user_id': 'platform.sysmon',
+                                                    'identity': 'platform.sysmon',
+                                                    'enabled': True
+                                                }
+                                  },
+                                  "<user_id>": {
+                                      "route": "/vui/platforms/my_instance_name/auths/<user_id>",
+                                      "record": {
+                                                    'address': '<address>',
+                                                    'mechanism': 'NULL',
+                                                    'credentials': '<public_key>',
+                                                    'groups': ['<group1>', '<group2>'],
+                                                    'roles': ['<role1>', '<role2>'],
+                                                    'capabilities': {'<capability1>': None, '<capability2>': None},
+                                                    'rpc_method_authorizations': {},
+                                                    'comments': '<comments>',
+                                                    'user_id': '<user_id>',
+                                                    'identity': None,
+                                                    'enabled': True
+                                                }
+                                  }
+                              }
+                              ),
+                             (True, True, False, None, True, None, True, None, True, None, True, None, True,
+                              {
+                                  "platform.historian": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.historian",
+                                      "record":  {
+                                                    'domain': None,
+                                                    'mechanism': 'CURVE',
+                                                    'credentials': 'e-v_K8vx6E5bfgI6uL5-I9m35kKWJQA062qLdfX-zEE',
+                                                    'groups': [],
+                                                    'roles': [],
+                                                    'capabilities':
+                                                        {'edit_config_store': {'identity': 'platform.historian'}},
+                                                    'rpc_method_authorizations': {'get_aggregate_topics': [],
+                                                                                  'get_topic_list': [],
+                                                                                  'get_topics_by_pattern': [],
+                                                                                  'get_topics_metadata': [],
+                                                                                  'get_version': [],
+                                                                                  'insert': [],
+                                                                                  'query': []},
+                                                    'comments': 'Automatically added on agent install',
+                                                    'user_id': 'platform.historian',
+                                                    'identity': 'platform.historian',
+                                                    'enabled': True
+                                                }
+                                  },
+                                  "platform.sysmon": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.sysmon",
+                                      "record": {
+                                                    'domain': None,
+                                                    'mechanism': 'CURVE',
+                                                    'credentials': '_LMMJDPrgB3fxQPiznX3WcpgWovi31_FYpirt99rXEM',
+                                                    'groups': [],
+                                                    'roles': [],
+                                                    'capabilities': {'edit_config_store':
+                                                                         {'identity': 'platform.sysmon'}},
+                                                    'rpc_method_authorizations': {'cpu_percent': [],
+                                                                                  'disk_percent': [],
+                                                                                  'memory_percent': [],
+                                                                                  'reconfigure': []},
+                                                    'comments': 'Automatically added on agent install',
+                                                    'user_id': 'platform.sysmon',
+                                                    'identity': 'platform.sysmon',
+                                                    'enabled': True
+                                                }
+                                  },
+                                  "<user_id>": {
+                                      "route": "/vui/platforms/my_instance_name/auths/<user_id>",
+                                      "record": {
+                                                    'domain': '<domain>',
+                                                    'mechanism': 'NULL',
+                                                    'credentials': '<public_key>',
+                                                    'groups': ['<group1>', '<group2>'],
+                                                    'roles': ['<role1>', '<role2>'],
+                                                    'capabilities': {'<capability1>': None, '<capability2>': None},
+                                                    'rpc_method_authorizations': {},
+                                                    'comments': '<comments>',
+                                                    'user_id': '<user_id>',
+                                                    'identity': None,
+                                                    'enabled': True
+                                                }
+                                  }
+                              }
+                              ),
+                             (True, True, None, False, True, None, True, None, True, None, True, None, True,
+                              {
+                                  "platform.historian": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.historian",
+                                      "record":  {
+                                                    'domain': None,
+                                                    'address': None,
+                                                    'mechanism': 'CURVE',
+                                                    'credentials': 'e-v_K8vx6E5bfgI6uL5-I9m35kKWJQA062qLdfX-zEE',
+                                                    'groups': [],
+                                                    'roles': [],
+                                                    'rpc_method_authorizations': {'get_aggregate_topics': [],
+                                                                                  'get_topic_list': [],
+                                                                                  'get_topics_by_pattern': [],
+                                                                                  'get_topics_metadata': [],
+                                                                                  'get_version': [],
+                                                                                  'insert': [],
+                                                                                  'query': []},
+                                                    'comments': 'Automatically added on agent install',
+                                                    'user_id': 'platform.historian',
+                                                    'identity': 'platform.historian',
+                                                    'enabled': True
+                                                }
+                                  },
+                                  "platform.sysmon": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.sysmon",
+                                      "record": {
+                                                    'domain': None,
+                                                    'address': None,
+                                                    'mechanism': 'CURVE',
+                                                    'credentials': '_LMMJDPrgB3fxQPiznX3WcpgWovi31_FYpirt99rXEM',
+                                                    'groups': [],
+                                                    'roles': [],
+                                                    'rpc_method_authorizations': {'cpu_percent': [],
+                                                                                  'disk_percent': [],
+                                                                                  'memory_percent': [],
+                                                                                  'reconfigure': []},
+                                                    'comments': 'Automatically added on agent install',
+                                                    'user_id': 'platform.sysmon',
+                                                    'identity': 'platform.sysmon',
+                                                    'enabled': True
+                                                }
+                                  },
+                                  "<user_id>": {
+                                      "route": "/vui/platforms/my_instance_name/auths/<user_id>",
+                                      "record": {
+                                                    'domain': '<domain>',
+                                                    'address': '<address>',
+                                                    'mechanism': 'NULL',
+                                                    'credentials': '<public_key>',
+                                                    'groups': ['<group1>', '<group2>'],
+                                                    'roles': ['<role1>', '<role2>'],
+                                                    'rpc_method_authorizations': {},
+                                                    'comments': '<comments>',
+                                                    'user_id': '<user_id>',
+                                                    'identity': None,
+                                                    'enabled': True
+                                                }
+                                  }
+                              }
+                              ),
+                             (True, True, None, True, False, None, True, None, True, None, True, None, True,
+                              {
+                                  "platform.historian": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.historian",
+                                      "record":  {
+                                                    'domain': None,
+                                                    'address': None,
+                                                    'mechanism': 'CURVE',
+                                                    'credentials': 'e-v_K8vx6E5bfgI6uL5-I9m35kKWJQA062qLdfX-zEE',
+                                                    'groups': [],
+                                                    'capabilities':
+                                                        {'edit_config_store': {'identity': 'platform.historian'}},
+                                                    'rpc_method_authorizations': {'get_aggregate_topics': [],
+                                                                                  'get_topic_list': [],
+                                                                                  'get_topics_by_pattern': [],
+                                                                                  'get_topics_metadata': [],
+                                                                                  'get_version': [],
+                                                                                  'insert': [],
+                                                                                  'query': []},
+                                                    'comments': 'Automatically added on agent install',
+                                                    'user_id': 'platform.historian',
+                                                    'identity': 'platform.historian',
+                                                    'enabled': True
+                                                }
+                                  },
+                                  "platform.sysmon": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.sysmon",
+                                      "record": {
+                                                    'domain': None,
+                                                    'address': None,
+                                                    'mechanism': 'CURVE',
+                                                    'credentials': '_LMMJDPrgB3fxQPiznX3WcpgWovi31_FYpirt99rXEM',
+                                                    'groups': [],
+                                                    'capabilities': {'edit_config_store':
+                                                                         {'identity': 'platform.sysmon'}},
+                                                    'rpc_method_authorizations': {'cpu_percent': [],
+                                                                                  'disk_percent': [],
+                                                                                  'memory_percent': [],
+                                                                                  'reconfigure': []},
+                                                    'comments': 'Automatically added on agent install',
+                                                    'user_id': 'platform.sysmon',
+                                                    'identity': 'platform.sysmon',
+                                                    'enabled': True
+                                                }
+                                  },
+                                  "<user_id>": {
+                                      "route": "/vui/platforms/my_instance_name/auths/<user_id>",
+                                      "record": {
+                                                    'domain': '<domain>',
+                                                    'address': '<address>',
+                                                    'mechanism': 'NULL',
+                                                    'credentials': '<public_key>',
+                                                    'groups': ['<group1>', '<group2>'],
+                                                    'capabilities': {'<capability1>': None, '<capability2>': None},
+                                                    'rpc_method_authorizations': {},
+                                                    'comments': '<comments>',
+                                                    'user_id': '<user_id>',
+                                                    'identity': None,
+                                                    'enabled': True
+                                                }
+                                  }
+                              }
+                              ),
+                             (True, True, None, True, None, False, True, None, True, None, True, None, True,
+                              {
+                                  "platform.historian": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.historian",
+                                      "record":  {
+                                                    'domain': None,
+                                                    'address': None,
+                                                    'mechanism': 'CURVE',
+                                                    'credentials': 'e-v_K8vx6E5bfgI6uL5-I9m35kKWJQA062qLdfX-zEE',
+                                                    'roles': [],
+                                                    'capabilities':
+                                                        {'edit_config_store': {'identity': 'platform.historian'}},
+                                                    'rpc_method_authorizations': {'get_aggregate_topics': [],
+                                                                                  'get_topic_list': [],
+                                                                                  'get_topics_by_pattern': [],
+                                                                                  'get_topics_metadata': [],
+                                                                                  'get_version': [],
+                                                                                  'insert': [],
+                                                                                  'query': []},
+                                                    'comments': 'Automatically added on agent install',
+                                                    'user_id': 'platform.historian',
+                                                    'identity': 'platform.historian',
+                                                    'enabled': True
+                                                }
+                                  },
+                                  "platform.sysmon": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.sysmon",
+                                      "record": {
+                                                    'domain': None,
+                                                    'address': None,
+                                                    'mechanism': 'CURVE',
+                                                    'credentials': '_LMMJDPrgB3fxQPiznX3WcpgWovi31_FYpirt99rXEM',
+                                                    'roles': [],
+                                                    'capabilities': {'edit_config_store':
+                                                                         {'identity': 'platform.sysmon'}},
+                                                    'rpc_method_authorizations': {'cpu_percent': [],
+                                                                                  'disk_percent': [],
+                                                                                  'memory_percent': [],
+                                                                                  'reconfigure': []},
+                                                    'comments': 'Automatically added on agent install',
+                                                    'user_id': 'platform.sysmon',
+                                                    'identity': 'platform.sysmon',
+                                                    'enabled': True
+                                                }
+                                  },
+                                  "<user_id>": {
+                                      "route": "/vui/platforms/my_instance_name/auths/<user_id>",
+                                      "record": {
+                                                    'domain': '<domain>',
+                                                    'address': '<address>',
+                                                    'mechanism': 'NULL',
+                                                    'credentials': '<public_key>',
+                                                    'roles': ['<role1>', '<role2>'],
+                                                    'capabilities': {'<capability1>': None, '<capability2>': None},
+                                                    'rpc_method_authorizations': {},
+                                                    'comments': '<comments>',
+                                                    'user_id': '<user_id>',
+                                                    'identity': None,
+                                                    'enabled': True
+                                                }
+                                  }
+                              }
+                              ),
+                             (True, True, None, True, None, True, False, None, True, None, True, None, True,
+                              {
+                                  "platform.historian": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.historian",
+                                      "record":  {
+                                                    'domain': None,
+                                                    'address': None,
+                                                    'credentials': 'e-v_K8vx6E5bfgI6uL5-I9m35kKWJQA062qLdfX-zEE',
+                                                    'groups': [],
+                                                    'roles': [],
+                                                    'capabilities':
+                                                        {'edit_config_store': {'identity': 'platform.historian'}},
+                                                    'rpc_method_authorizations': {'get_aggregate_topics': [],
+                                                                                  'get_topic_list': [],
+                                                                                  'get_topics_by_pattern': [],
+                                                                                  'get_topics_metadata': [],
+                                                                                  'get_version': [],
+                                                                                  'insert': [],
+                                                                                  'query': []},
+                                                    'comments': 'Automatically added on agent install',
+                                                    'user_id': 'platform.historian',
+                                                    'identity': 'platform.historian',
+                                                    'enabled': True
+                                                }
+                                  },
+                                  "platform.sysmon": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.sysmon",
+                                      "record": {
+                                                    'domain': None,
+                                                    'address': None,
+                                                    'credentials': '_LMMJDPrgB3fxQPiznX3WcpgWovi31_FYpirt99rXEM',
+                                                    'groups': [],
+                                                    'roles': [],
+                                                    'capabilities': {'edit_config_store':
+                                                                         {'identity': 'platform.sysmon'}},
+                                                    'rpc_method_authorizations': {'cpu_percent': [],
+                                                                                  'disk_percent': [],
+                                                                                  'memory_percent': [],
+                                                                                  'reconfigure': []},
+                                                    'comments': 'Automatically added on agent install',
+                                                    'user_id': 'platform.sysmon',
+                                                    'identity': 'platform.sysmon',
+                                                    'enabled': True
+                                                }
+                                  },
+                                  "<user_id>": {
+                                      "route": "/vui/platforms/my_instance_name/auths/<user_id>",
+                                      "record": {
+                                                    'domain': '<domain>',
+                                                    'address': '<address>',
+                                                    'credentials': '<public_key>',
+                                                    'groups': ['<group1>', '<group2>'],
+                                                    'roles': ['<role1>', '<role2>'],
+                                                    'capabilities': {'<capability1>': None, '<capability2>': None},
+                                                    'rpc_method_authorizations': {},
+                                                    'comments': '<comments>',
+                                                    'user_id': '<user_id>',
+                                                    'identity': None,
+                                                    'enabled': True
+                                                }
+                                  }
+                              }
+                              ),
+                             (True, True, None, True, None, True, None, False, True, None, True, None, True,
+                              {
+                                  "platform.historian": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.historian",
+                                      "record":  {
+                                                    'domain': None,
+                                                    'address': None,
+                                                    'mechanism': 'CURVE',
+                                                    'groups': [],
+                                                    'roles': [],
+                                                    'capabilities':
+                                                        {'edit_config_store': {'identity': 'platform.historian'}},
+                                                    'rpc_method_authorizations': {'get_aggregate_topics': [],
+                                                                                  'get_topic_list': [],
+                                                                                  'get_topics_by_pattern': [],
+                                                                                  'get_topics_metadata': [],
+                                                                                  'get_version': [],
+                                                                                  'insert': [],
+                                                                                  'query': []},
+                                                    'comments': 'Automatically added on agent install',
+                                                    'user_id': 'platform.historian',
+                                                    'identity': 'platform.historian',
+                                                    'enabled': True
+                                                }
+                                  },
+                                  "platform.sysmon": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.sysmon",
+                                      "record": {
+                                                    'domain': None,
+                                                    'address': None,
+                                                    'mechanism': 'CURVE',
+                                                    'groups': [],
+                                                    'roles': [],
+                                                    'capabilities': {'edit_config_store': {
+                                                        'identity': 'platform.sysmon'}},
+                                                    'rpc_method_authorizations': {'cpu_percent': [],
+                                                                                  'disk_percent': [],
+                                                                                  'memory_percent': [],
+                                                                                  'reconfigure': []},
+                                                    'comments': 'Automatically added on agent install',
+                                                    'user_id': 'platform.sysmon',
+                                                    'identity': 'platform.sysmon',
+                                                    'enabled': True
+                                                }
+                                  },
+                                  "<user_id>": {
+                                      "route": "/vui/platforms/my_instance_name/auths/<user_id>",
+                                      "record": {
+                                                    'domain': '<domain>',
+                                                    'address': '<address>',
+                                                    'mechanism': 'NULL',
+                                                    'groups': ['<group1>', '<group2>'],
+                                                    'roles': ['<role1>', '<role2>'],
+                                                    'capabilities': {'<capability1>': None, '<capability2>': None},
+                                                    'rpc_method_authorizations': {},
+                                                    'comments': '<comments>',
+                                                    'user_id': '<user_id>',
+                                                    'identity': None,
+                                                    'enabled': True
+                                                }
+                                  }
+                              }
+                              ),
+                             (True, True, None, True, None, True, None, True, False, None, True, None, True,
+                              {
+                                  "platform.historian": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.historian",
+                                      "record":  {
+                                                    'domain': None,
+                                                    'address': None,
+                                                    'mechanism': 'CURVE',
+                                                    'credentials': 'e-v_K8vx6E5bfgI6uL5-I9m35kKWJQA062qLdfX-zEE',
+                                                    'groups': [],
+                                                    'roles': [],
+                                                    'capabilities':
+                                                        {'edit_config_store': {'identity': 'platform.historian'}},
+                                                    'rpc_method_authorizations': {'get_aggregate_topics': [],
+                                                                                  'get_topic_list': [],
+                                                                                  'get_topics_by_pattern': [],
+                                                                                  'get_topics_metadata': [],
+                                                                                  'get_version': [],
+                                                                                  'insert': [],
+                                                                                  'query': []},
+                                                    'user_id': 'platform.historian',
+                                                    'identity': 'platform.historian',
+                                                    'enabled': True
+                                                }
+                                  },
+                                  "platform.sysmon": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.sysmon",
+                                      "record": {
+                                                    'domain': None,
+                                                    'address': None,
+                                                    'mechanism': 'CURVE',
+                                                    'credentials': '_LMMJDPrgB3fxQPiznX3WcpgWovi31_FYpirt99rXEM',
+                                                    'groups': [],
+                                                    'roles': [],
+                                                    'capabilities': {'edit_config_store': {
+                                                        'identity': 'platform.sysmon'}},
+                                                    'rpc_method_authorizations': {'cpu_percent': [],
+                                                                                  'disk_percent': [],
+                                                                                  'memory_percent': [],
+                                                                                  'reconfigure': []},
+                                                    'user_id': 'platform.sysmon',
+                                                    'identity': 'platform.sysmon',
+                                                    'enabled': True
+                                                }
+                                  },
+                                  "<user_id>": {
+                                      "route": "/vui/platforms/my_instance_name/auths/<user_id>",
+                                      "record": {
+                                                    'domain': '<domain>',
+                                                    'address': '<address>',
+                                                    'mechanism': 'NULL',
+                                                    'credentials': '<public_key>',
+                                                    'groups': ['<group1>', '<group2>'],
+                                                    'roles': ['<role1>', '<role2>'],
+                                                    'capabilities': {'<capability1>': None, '<capability2>': None},
+                                                    'rpc_method_authorizations': {},
+                                                    'user_id': '<user_id>',
+                                                    'identity': None,
+                                                    'enabled': True
+                                                }
+                                  }
+                              }
+                              ),
+                             (True, True, None, True, None, True, None, True, None, False, True, None, True,
+                              {
+                                  "platform.historian": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.historian",
+                                      "record":  {
+                                                    'domain': None,
+                                                    'address': None,
+                                                    'mechanism': 'CURVE',
+                                                    'credentials': 'e-v_K8vx6E5bfgI6uL5-I9m35kKWJQA062qLdfX-zEE',
+                                                    'groups': [],
+                                                    'roles': [],
+                                                    'capabilities':
+                                                        {'edit_config_store': {'identity': 'platform.historian'}},
+                                                    'rpc_method_authorizations': {'get_aggregate_topics': [],
+                                                                                  'get_topic_list': [],
+                                                                                  'get_topics_by_pattern': [],
+                                                                                  'get_topics_metadata': [],
+                                                                                  'get_version': [],
+                                                                                  'insert': [],
+                                                                                  'query': []},
+                                                    'comments': 'Automatically added on agent install',
+                                                    'user_id': 'platform.historian',
+                                                    'identity': 'platform.historian',
+                                                }
+                                  },
+                                  "platform.sysmon": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.sysmon",
+                                      "record": {
+                                                    'domain': None,
+                                                    'address': None,
+                                                    'mechanism': 'CURVE',
+                                                    'credentials': '_LMMJDPrgB3fxQPiznX3WcpgWovi31_FYpirt99rXEM',
+                                                    'groups': [],
+                                                    'roles': [],
+                                                    'capabilities': {'edit_config_store': {
+                                                        'identity': 'platform.sysmon'}},
+                                                    'rpc_method_authorizations': {'cpu_percent': [],
+                                                                                  'disk_percent': [],
+                                                                                  'memory_percent': [],
+                                                                                  'reconfigure': []},
+                                                    'comments': 'Automatically added on agent install',
+                                                    'user_id': 'platform.sysmon',
+                                                    'identity': 'platform.sysmon',
+                                                }
+                                  },
+                                  "<user_id>": {
+                                      "route": "/vui/platforms/my_instance_name/auths/<user_id>",
+                                      "record": {
+                                                    'domain': '<domain>',
+                                                    'address': '<address>',
+                                                    'mechanism': 'NULL',
+                                                    'credentials': '<public_key>',
+                                                    'groups': ['<group1>', '<group2>'],
+                                                    'roles': ['<role1>', '<role2>'],
+                                                    'capabilities': {'<capability1>': None, '<capability2>': None},
+                                                    'rpc_method_authorizations': {},
+                                                    'comments': '<comments>',
+                                                    'user_id': '<user_id>',
+                                                    'identity': None,
+                                                }
+                                  }
+                              }
+                              ),
+                             (True, True, None, True, None, True, None, True, None, True, False, None, True,
+                              {
+                                  "platform.historian": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.historian",
+                                      "record":  {
+                                                    'domain': None,
+                                                    'address': None,
+                                                    'mechanism': 'CURVE',
+                                                    'credentials': 'e-v_K8vx6E5bfgI6uL5-I9m35kKWJQA062qLdfX-zEE',
+                                                    'groups': [],
+                                                    'roles': [],
+                                                    'capabilities':
+                                                        {'edit_config_store': {'identity': 'platform.historian'}},
+                                                    'comments': 'Automatically added on agent install',
+                                                    'user_id': 'platform.historian',
+                                                    'identity': 'platform.historian',
+                                                    'enabled': True
+                                                }
+                                  },
+                                  "platform.sysmon": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.sysmon",
+                                      "record": {
+                                                    'domain': None,
+                                                    'address': None,
+                                                    'mechanism': 'CURVE',
+                                                    'credentials': '_LMMJDPrgB3fxQPiznX3WcpgWovi31_FYpirt99rXEM',
+                                                    'groups': [],
+                                                    'roles': [],
+                                                    'capabilities': {'edit_config_store': {
+                                                        'identity': 'platform.sysmon'}},
+                                                    'comments': 'Automatically added on agent install',
+                                                    'user_id': 'platform.sysmon',
+                                                    'identity': 'platform.sysmon',
+                                                    'enabled': True
+                                                }
+                                  },
+                                  "<user_id>": {
+                                      "route": "/vui/platforms/my_instance_name/auths/<user_id>",
+                                      "record": {
+                                                    'domain': '<domain>',
+                                                    'address': '<address>',
+                                                    'mechanism': 'NULL',
+                                                    'credentials': '<public_key>',
+                                                    'groups': ['<group1>', '<group2>'],
+                                                    'roles': ['<role1>', '<role2>'],
+                                                    'capabilities': {'<capability1>': None, '<capability2>': None},
+                                                    'comments': '<comments>',
+                                                    'user_id': '<user_id>',
+                                                    'identity': None,
+                                                    'enabled': True
+                                                }
+                                  }
+                              }
+                              ),
+                             (True, True, None, True, None, True, None, True, None, True, None, False, True,
+                              {
+                                  "platform.historian": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.historian",
+                                      "record":  {
+                                                    'domain': None,
+                                                    'address': None,
+                                                    'mechanism': 'CURVE',
+                                                    'credentials': 'e-v_K8vx6E5bfgI6uL5-I9m35kKWJQA062qLdfX-zEE',
+                                                    'groups': [],
+                                                    'roles': [],
+                                                    'capabilities':
+                                                        {'edit_config_store': {'identity': 'platform.historian'}},
+                                                    'rpc_method_authorizations': {'get_aggregate_topics': [],
+                                                                                  'get_topic_list': [],
+                                                                                  'get_topics_by_pattern': [],
+                                                                                  'get_topics_metadata': [],
+                                                                                  'get_version': [],
+                                                                                  'insert': [],
+                                                                                  'query': []},
+                                                    'comments': 'Automatically added on agent install',
+                                                    'identity': 'platform.historian',
+                                                    'enabled': True
+                                                }
+                                  },
+                                  "platform.sysmon": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.sysmon",
+                                      "record": {
+                                                    'domain': None,
+                                                    'address': None,
+                                                    'mechanism': 'CURVE',
+                                                    'credentials': '_LMMJDPrgB3fxQPiznX3WcpgWovi31_FYpirt99rXEM',
+                                                    'groups': [],
+                                                    'roles': [],
+                                                    'capabilities': {'edit_config_store': {'identity': 'platform.sysmon'}},
+                                                    'rpc_method_authorizations': {'cpu_percent': [],
+                                                                                  'disk_percent': [],
+                                                                                  'memory_percent': [],
+                                                                                  'reconfigure': []},
+                                                    'comments': 'Automatically added on agent install',
+                                                    'identity': 'platform.sysmon',
+                                                    'enabled': True
+                                                }
+                                  },
+                                  "<user_id>": {
+                                      "route": "/vui/platforms/my_instance_name/auths/<user_id>",
+                                      "record": {
+                                                    'domain': '<domain>',
+                                                    'address': '<address>',
+                                                    'mechanism': 'NULL',
+                                                    'credentials': '<public_key>',
+                                                    'groups': ['<group1>', '<group2>'],
+                                                    'roles': ['<role1>', '<role2>'],
+                                                    'capabilities': {'<capability1>': None, '<capability2>': None},
+                                                    'rpc_method_authorizations': {},
+                                                    'comments': '<comments>',
+                                                    'identity': None,
+                                                    'enabled': True
+                                                }
+                                  }
+                              }
+                              ),
+                             (True, True, None, True, None, True, None, True, None, True, None, True, False,
+                              {
+                                  "platform.historian": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.historian",
+                                      "record":  {
+                                                    'domain': None,
+                                                    'address': None,
+                                                    'mechanism': 'CURVE',
+                                                    'credentials': 'e-v_K8vx6E5bfgI6uL5-I9m35kKWJQA062qLdfX-zEE',
+                                                    'groups': [],
+                                                    'roles': [],
+                                                    'capabilities':
+                                                        {'edit_config_store': {'identity': 'platform.historian'}},
+                                                    'rpc_method_authorizations': {'get_aggregate_topics': [],
+                                                                                  'get_topic_list': [],
+                                                                                  'get_topics_by_pattern': [],
+                                                                                  'get_topics_metadata': [],
+                                                                                  'get_version': [],
+                                                                                  'insert': [],
+                                                                                  'query': []},
+                                                    'comments': 'Automatically added on agent install',
+                                                    'user_id': 'platform.historian',
+                                                    'enabled': True
+                                                }
+                                  },
+                                  "platform.sysmon": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.sysmon",
+                                      "record": {
+                                                    'domain': None,
+                                                    'address': None,
+                                                    'mechanism': 'CURVE',
+                                                    'credentials': '_LMMJDPrgB3fxQPiznX3WcpgWovi31_FYpirt99rXEM',
+                                                    'groups': [],
+                                                    'roles': [],
+                                                    'capabilities': {'edit_config_store': {
+                                                        'identity': 'platform.sysmon'}},
+                                                    'rpc_method_authorizations': {'cpu_percent': [],
+                                                                                  'disk_percent': [],
+                                                                                  'memory_percent': [],
+                                                                                  'reconfigure': []},
+                                                    'comments': 'Automatically added on agent install',
+                                                    'user_id': 'platform.sysmon',
+                                                    'enabled': True
+                                                }
+                                  },
+                                  "<user_id>": {
+                                      "route": "/vui/platforms/my_instance_name/auths/<user_id>",
+                                      "record": {
+                                                    'domain': '<domain>',
+                                                    'address': '<address>',
+                                                    'mechanism': 'NULL',
+                                                    'credentials': '<public_key>',
+                                                    'groups': ['<group1>', '<group2>'],
+                                                    'roles': ['<role1>', '<role2>'],
+                                                    'capabilities': {'<capability1>': None, '<capability2>': None},
+                                                    'rpc_method_authorizations': {},
+                                                    'comments': '<comments>',
+                                                    'user_id': '<user_id>',
+                                                    'enabled': True
+                                                }
+                                  }
+                              }
+                              ),
+                             (True, True, False, False, False, False, False, False, False, False, False, False, False,
+                              {
+                                  "platform.historian": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.historian",
+                                      "record":  {
+                                                    'domain': None
+                                                }
+                                  },
+                                  "platform.sysmon": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.sysmon",
+                                      "record": {
+                                                    'domain': None
+                                                }
+                                  },
+                                  "<user_id>": {
+                                      "route": "/vui/platforms/my_instance_name/auths/<user_id>",
+                                      "record": {
+                                                    'domain': '<domain>'
+                                                }
+                                  }
+                              }
+                              ),
+                             (True, False, True, False, False, False, False, False, False, False, False, False, False,
+                              {
+                                  "platform.historian": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.historian",
+                                      "record":  {
+                                                    'address': None
+                                                }
+                                  },
+                                  "platform.sysmon": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.sysmon",
+                                      "record": {
+                                                    'address': None
+                                                }
+                                  },
+                                  "<user_id>": {
+                                      "route": "/vui/platforms/my_instance_name/auths/<user_id>",
+                                      "record": {
+                                                    'address': '<address>'
+                                                }
+                                  }
+                              }
+                              ),
+                             (True, False, False, True, False, False, False, False, False, False, False, False, False,
+                              {
+                                  "platform.historian": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.historian",
+                                      "record":  {
+                                          'capabilities':
+                                              {'edit_config_store': {'identity': 'platform.historian'}}
+                                      }
+                                  },
+                                  "platform.sysmon": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.sysmon",
+                                      "record": {
+                                          'capabilities':
+                                              {'edit_config_store': {'identity': 'platform.sysmon'}}
+                                      }
+                                  },
+                                  "<user_id>": {
+                                      "route": "/vui/platforms/my_instance_name/auths/<user_id>",
+                                      "record": {
+                                                    'capabilities': {'<capability1>': None, '<capability2>': None}
+                                                }
+                                  }
+                              }
+                              ),
+                             (True, False, False, False, True, False, False, False, False, False, False, False, False,
+                              {
+                                  "platform.historian": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.historian",
+                                      "record":  {
+                                                    'roles': []
+                                                }
+                                  },
+                                  "platform.sysmon": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.sysmon",
+                                      "record": {
+                                                    'roles': []
+                                                }
+                                  },
+                                  "<user_id>": {
+                                      "route": "/vui/platforms/my_instance_name/auths/<user_id>",
+                                      "record": {
+                                                    'roles': ['<role1>', '<role2>']
+                                                }
+                                  }
+                              }
+                              ),
+                             (True, False, False, False, False, True, False, False, False, False, False, False, False,
+                              {
+                                  "platform.historian": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.historian",
+                                      "record":  {
+                                                    'groups': []
+                                                }
+                                  },
+                                  "platform.sysmon": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.sysmon",
+                                      "record": {
+                                                    'groups': []
+                                                }
+                                  },
+                                  "<user_id>": {
+                                      "route": "/vui/platforms/my_instance_name/auths/<user_id>",
+                                      "record": {
+                                                    'groups': ['<group1>', '<group2>']
+                                                }
+                                  }
+                              }
+                              ),
+                             (True, False, False, False, False, False, True, False, False, False, False, False, False,
+                              {
+                                  "platform.historian": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.historian",
+                                      "record":  {
+                                                    'mechanism': 'CURVE'
+                                                }
+                                  },
+                                  "platform.sysmon": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.sysmon",
+                                      "record": {
+                                                    'mechanism': 'CURVE'
+                                                }
+                                  },
+                                  "<user_id>": {
+                                      "route": "/vui/platforms/my_instance_name/auths/<user_id>",
+                                      "record": {
+                                                    'mechanism': 'NULL'
+                                                }
+                                  }
+                              }
+                              ),
+                             (True, False, False, False, False, False, False, True, False, False, False, False, False,
+                              {
+                                  "platform.historian": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.historian",
+                                      "record":  {
+                                                    'credentials': 'e-v_K8vx6E5bfgI6uL5-I9m35kKWJQA062qLdfX-zEE'
+                                                }
+                                  },
+                                  "platform.sysmon": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.sysmon",
+                                      "record": {
+                                                    'credentials': '_LMMJDPrgB3fxQPiznX3WcpgWovi31_FYpirt99rXEM'
+                                                }
+                                  },
+                                  "<user_id>": {
+                                      "route": "/vui/platforms/my_instance_name/auths/<user_id>",
+                                      "record": {
+                                                    'credentials': '<public_key>'
+                                                }
+                                  }
+                              }
+                              ),
+                             (True, False, False, False, False, False, False, False, True, False, False, False, False,
+                              {
+                                  "platform.historian": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.historian",
+                                      "record":  {
+                                                    'comments': 'Automatically added on agent install'
+                                                }
+                                  },
+                                  "platform.sysmon": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.sysmon",
+                                      "record": {
+                                                    'comments': 'Automatically added on agent install'
+                                                }
+                                  },
+                                  "<user_id>": {
+                                      "route": "/vui/platforms/my_instance_name/auths/<user_id>",
+                                      "record": {
+                                                    'comments': '<comments>'
+                                                }
+                                  }
+                              }
+                              ),
+                             (True, False, False, False, False, False, False, False, False, True, False, False, False,
+                              {
+                                  "platform.historian": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.historian",
+                                      "record":  {
+                                                    'enabled': True
+                                                }
+                                  },
+                                  "platform.sysmon": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.sysmon",
+                                      "record": {
+                                                    'enabled': True
+                                                }
+                                  },
+                                  "<user_id>": {
+                                      "route": "/vui/platforms/my_instance_name/auths/<user_id>",
+                                      "record": {
+                                                    'enabled': True
+                                                }
+                                  }
+                              }
+                              ),
+                             (True, False, False, False, False, False, False, False, False, False, True, False, False,
+                              {
+                                  "platform.historian": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.historian",
+                                      "record":  {
+                                                    'rpc_method_authorizations': {'get_aggregate_topics': [],
+                                                                                  'get_topic_list': [],
+                                                                                  'get_topics_by_pattern': [],
+                                                                                  'get_topics_metadata': [],
+                                                                                  'get_version': [],
+                                                                                  'insert': [],
+                                                                                  'query': []}
+                                                }
+                                  },
+                                  "platform.sysmon": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.sysmon",
+                                      "record": {
+                                                    'rpc_method_authorizations': {'cpu_percent': [],
+                                                                                  'disk_percent': [],
+                                                                                  'memory_percent': [],
+                                                                                  'reconfigure': []}
+                                                }
+                                  },
+                                  "<user_id>": {
+                                      "route": "/vui/platforms/my_instance_name/auths/<user_id>",
+                                      "record": {
+                                                    'rpc_method_authorizations': {}
+                                                }
+                                  }
+                              }
+                              ),
+                             (True, False, False, False, False, False, False, False, False, False, False, True, False,
+                              {
+                                  "platform.historian": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.historian",
+                                      "record":  {
+                                                    'user_id': 'platform.historian'
+                                                }
+                                  },
+                                  "platform.sysmon": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.sysmon",
+                                      "record": {
+                                                    'user_id': 'platform.sysmon'
+                                                }
+                                  },
+                                  "<user_id>": {
+                                      "route": "/vui/platforms/my_instance_name/auths/<user_id>",
+                                      "record": {
+                                                    'user_id': '<user_id>'
+                                                }
+                                  }
+                              }
+                              ),
+                             (True, False, False, False, False, False, False, False, False, False, False, False, True,
+                              {
+                                  "platform.historian": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.historian",
+                                      "record":  {
+                                                    'identity': 'platform.historian'
+                                                }
+                                  },
+                                  "platform.sysmon": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.sysmon",
+                                      "record": {
+                                                    'identity': 'platform.sysmon'
+                                                }
+                                  },
+                                  "<user_id>": {
+                                      "route": "/vui/platforms/my_instance_name/auths/<user_id>",
+                                      "record": {
+                                                    'identity': None
+                                                }
+                                  }
+                              }
+                              ),
+                             (True, False, False, False, False, False, False, False, False, False, False, False, False,
+                              {
+                                  "platform.historian": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.historian",
+                                      "record":  {
+                                                }
+                                  },
+                                  "platform.sysmon": {
+                                      "route": "/vui/platforms/my_instance_name/auths/platform.sysmon",
+                                      "record": {
+                                                }
+                                  },
+                                  "<user_id>": {
+                                      "route": "/vui/platforms/my_instance_name/auths/<user_id>",
+                                      "record": {
+                                                }
+                                  }
+                              }
+                              )
+                         ]
+                         )
+def test_handle_platforms_auth_get_response(mock_platform_web_service, records, domain, address, capabilities, roles,
+                                            groups, mechanism, credentials, comments, enabled, rpc_method_authorizations,
+                                            user_id, identity, expected):
+    path = '/vui/platforms/my_instance_name/auths'
+    query_string = f'records={records}' if records else ''
+    query_string = query_string + f'&domain={domain}' if (domain or domain == False) else query_string + ''
+    query_string = query_string + f'&address={address}' if (address or address == False) else query_string + ''
+    query_string = query_string + f'&capabilities={capabilities}' if (capabilities or capabilities == False) else\
+        query_string + ''
+    query_string = query_string + f'&roles={roles}' if (roles or roles == False) else query_string + ''
+    query_string = query_string + f'&groups={groups}' if (groups or groups == False) else query_string + ''
+    query_string = query_string + f'&mechanism={mechanism}' if (mechanism or mechanism == False) else query_string + ''
+    query_string = query_string + f'&credentials={credentials}' if (credentials or credentials == False) \
+        else query_string + ''
+    query_string = query_string + f'&comments={comments}' if (comments or comments == False) else query_string + ''
+    query_string = query_string + f'&enabled={enabled}' if (enabled or enabled == False) else query_string + ''
+    query_string = query_string + f'&rpc_method_authorizations={rpc_method_authorizations}' if (
+                rpc_method_authorizations or rpc_method_authorizations == False) else query_string + ''
+    query_string = query_string + f'&user_id={user_id}' if (user_id or user_id == False) else query_string + ''
+    query_string = query_string + f'&identity={identity}' if (identity or identity == False) else query_string + ''
+    env = get_test_web_env(path, method='GET', query_string=query_string, HTTP_AUTHORIZATION='Bearer foo')
+    vui_endpoints = VUIEndpoints(mock_platform_web_service)
+    vui_endpoints._rpc = _mock_agents_rpc
+    response = vui_endpoints.handle_platforms_auths(env, {})
+    assert json.loads(response.response[0]) == expected
+
+
+@pytest.mark.parametrize("auth_user_id, domain, address, capabilities, roles, groups, mechanism, credentials, comments,"
+                         " enabled, rpc_method_authorizations, user_id, identity, expected",
+                         [
+                             ("platform.historian", False, True, None, True, None, True, None, True, None, True, None,
+                              True,
+                              {
+                                    'address': None,
+                                    'mechanism': 'CURVE',
+                                    'credentials': 'e-v_K8vx6E5bfgI6uL5-I9m35kKWJQA062qLdfX-zEE',
+                                    'groups': [],
+                                    'roles': [],
+                                    'capabilities':
+                                    {'edit_config_store': {'identity': 'platform.historian'}},
+                                    'rpc_method_authorizations': {'get_aggregate_topics': [],
+                                                                  'get_topic_list': [],
+                                                                  'get_topics_by_pattern': [],
+                                                                  'get_topics_metadata': [],
+                                                                  'get_version': [],
+                                                                  'insert': [],
+                                                                  'query': []},
+                                    'comments': 'Automatically added on agent install',
+                                    'user_id': 'platform.historian',
+                                    'identity': 'platform.historian',
+                                    'enabled': True
+                              }
+                              ),
+                             ("platform.historian", True, False, None, True, None, True, None, True, None, True, None,
+                              True,
+                              {
+                                    'domain': None,
+                                    'mechanism': 'CURVE',
+                                    'credentials': 'e-v_K8vx6E5bfgI6uL5-I9m35kKWJQA062qLdfX-zEE',
+                                    'groups': [],
+                                    'roles': [],
+                                    'capabilities': {'edit_config_store': {'identity': 'platform.historian'}},
+                                    'rpc_method_authorizations': {'get_aggregate_topics': [],
+                                                                  'get_topic_list': [],
+                                                                  'get_topics_by_pattern': [],
+                                                                  'get_topics_metadata': [],
+                                                                  'get_version': [],
+                                                                  'insert': [],
+                                                                  'query': []},
+                                    'comments': 'Automatically added on agent install',
+                                    'user_id': 'platform.historian',
+                                    'identity': 'platform.historian',
+                                    'enabled': True
+                              }
+                              ),
+                             ("platform.historian", True, None, False, True, None, True, None, True, None, True, None,
+                              True,
+                              {
+                                    'domain': None,
+                                    'address': None,
+                                    'mechanism': 'CURVE',
+                                    'credentials': 'e-v_K8vx6E5bfgI6uL5-I9m35kKWJQA062qLdfX-zEE',
+                                    'groups': [],
+                                    'roles': [],
+                                    'rpc_method_authorizations': {'get_aggregate_topics': [],
+                                                                  'get_topic_list': [],
+                                                                  'get_topics_by_pattern': [],
+                                                                  'get_topics_metadata': [],
+                                                                  'get_version': [],
+                                                                  'insert': [],
+                                                                  'query': []},
+                                    'comments': 'Automatically added on agent install',
+                                    'user_id': 'platform.historian',
+                                    'identity': 'platform.historian',
+                                    'enabled': True
+                              }
+                              ),
+                             ("platform.historian", True, None, True, False, None, True, None, True, None, True, None,
+                              True,
+                              {
+                                    'domain': None,
+                                    'address': None,
+                                    'mechanism': 'CURVE',
+                                    'credentials': 'e-v_K8vx6E5bfgI6uL5-I9m35kKWJQA062qLdfX-zEE',
+                                    'groups': [],
+                                    'capabilities': {'edit_config_store': {'identity': 'platform.historian'}},
+                                    'rpc_method_authorizations': {'get_aggregate_topics': [],
+                                                                  'get_topic_list': [],
+                                                                  'get_topics_by_pattern': [],
+                                                                  'get_topics_metadata': [],
+                                                                  'get_version': [],
+                                                                  'insert': [],
+                                                                  'query': []},
+                                    'comments': 'Automatically added on agent install',
+                                    'user_id': 'platform.historian',
+                                    'identity': 'platform.historian',
+                                    'enabled': True
+                              }
+                              ),
+                             ("platform.historian", True, None, True, None, False, True, None, True, None, True, None,
+                              True,
+                              {
+                                    'domain': None,
+                                    'address': None,
+                                    'mechanism': 'CURVE',
+                                    'credentials': 'e-v_K8vx6E5bfgI6uL5-I9m35kKWJQA062qLdfX-zEE',
+                                    'roles': [],
+                                    'capabilities': {'edit_config_store': {'identity': 'platform.historian'}},
+                                    'rpc_method_authorizations': {'get_aggregate_topics': [],
+                                                                  'get_topic_list': [],
+                                                                  'get_topics_by_pattern': [],
+                                                                  'get_topics_metadata': [],
+                                                                  'get_version': [],
+                                                                  'insert': [],
+                                                                  'query': []},
+                                    'comments': 'Automatically added on agent install',
+                                    'user_id': 'platform.historian',
+                                    'identity': 'platform.historian',
+                                    'enabled': True
+                              }
+                              ),
+                             ("platform.historian", True, None, True, None, True, False, None, True, None, True, None,
+                              True,
+                              {
+                                    'domain': None,
+                                    'address': None,
+                                    'credentials': 'e-v_K8vx6E5bfgI6uL5-I9m35kKWJQA062qLdfX-zEE',
+                                    'groups': [],
+                                    'roles': [],
+                                    'capabilities': {'edit_config_store': {'identity': 'platform.historian'}},
+                                    'rpc_method_authorizations': {'get_aggregate_topics': [],
+                                                                  'get_topic_list': [],
+                                                                  'get_topics_by_pattern': [],
+                                                                  'get_topics_metadata': [],
+                                                                  'get_version': [],
+                                                                  'insert': [],
+                                                                  'query': []},
+                                    'comments': 'Automatically added on agent install',
+                                    'user_id': 'platform.historian',
+                                    'identity': 'platform.historian',
+                                    'enabled': True
+                              }
+                              ),
+                             ("platform.historian", True, None, True, None, True, None, False, True, None, True, None,
+                              True,
+                              {
+                                    'domain': None,
+                                    'address': None,
+                                    'mechanism': 'CURVE',
+                                    'groups': [],
+                                    'roles': [],
+                                    'capabilities': {'edit_config_store': {'identity': 'platform.historian'}},
+                                    'rpc_method_authorizations': {'get_aggregate_topics': [],
+                                                                  'get_topic_list': [],
+                                                                  'get_topics_by_pattern': [],
+                                                                  'get_topics_metadata': [],
+                                                                  'get_version': [],
+                                                                  'insert': [],
+                                                                  'query': []},
+                                    'comments': 'Automatically added on agent install',
+                                    'user_id': 'platform.historian',
+                                    'identity': 'platform.historian',
+                                    'enabled': True
+                              }
+                              ),
+                             ("platform.historian", True, None, True, None, True, None, True, False, None, True, None,
+                              True,
+                              {
+                                    'domain': None,
+                                    'address': None,
+                                    'mechanism': 'CURVE',
+                                    'credentials': 'e-v_K8vx6E5bfgI6uL5-I9m35kKWJQA062qLdfX-zEE',
+                                    'groups': [],
+                                    'roles': [],
+                                    'capabilities': {'edit_config_store': {'identity': 'platform.historian'}},
+                                    'rpc_method_authorizations': {'get_aggregate_topics': [],
+                                                                  'get_topic_list': [],
+                                                                  'get_topics_by_pattern': [],
+                                                                  'get_topics_metadata': [],
+                                                                  'get_version': [],
+                                                                  'insert': [],
+                                                                  'query': []},
+                                    'user_id': 'platform.historian',
+                                    'identity': 'platform.historian',
+                                    'enabled': True
+                              }
+                              ),
+                             ("platform.historian", True, None, True, None, True, None, True, None, False, True, None,
+                              True,
+                              {
+                                    'domain': None,
+                                    'address': None,
+                                    'mechanism': 'CURVE',
+                                    'credentials': 'e-v_K8vx6E5bfgI6uL5-I9m35kKWJQA062qLdfX-zEE',
+                                    'groups': [],
+                                    'roles': [],
+                                    'capabilities': {'edit_config_store': {'identity': 'platform.historian'}},
+                                    'rpc_method_authorizations': {'get_aggregate_topics': [],
+                                                                  'get_topic_list': [],
+                                                                  'get_topics_by_pattern': [],
+                                                                  'get_topics_metadata': [],
+                                                                  'get_version': [],
+                                                                  'insert': [],
+                                                                  'query': []},
+                                    'comments': 'Automatically added on agent install',
+                                    'user_id': 'platform.historian',
+                                    'identity': 'platform.historian'
+                              }
+                              ),
+                             ("platform.historian", True, None, True, None, True, None, True, None, True, False, None,
+                              True,
+                              {
+                                    'domain': None,
+                                    'address': None,
+                                    'mechanism': 'CURVE',
+                                    'credentials': 'e-v_K8vx6E5bfgI6uL5-I9m35kKWJQA062qLdfX-zEE',
+                                    'groups': [],
+                                    'roles': [],
+                                    'capabilities': {'edit_config_store': {'identity': 'platform.historian'}},
+                                    'comments': 'Automatically added on agent install',
+                                    'user_id': 'platform.historian',
+                                    'identity': 'platform.historian',
+                                    'enabled': True
+                              }
+                              ),
+                             ("platform.historian", True, None, True, None, True, None, True, None, True, None, False,
+                              True,
+                              {
+                                    'domain': None,
+                                    'address': None,
+                                    'mechanism': 'CURVE',
+                                    'credentials': 'e-v_K8vx6E5bfgI6uL5-I9m35kKWJQA062qLdfX-zEE',
+                                    'groups': [],
+                                    'roles': [],
+                                    'capabilities': {'edit_config_store': {'identity': 'platform.historian'}},
+                                    'rpc_method_authorizations': {'get_aggregate_topics': [],
+                                                                  'get_topic_list': [],
+                                                                  'get_topics_by_pattern': [],
+                                                                  'get_topics_metadata': [],
+                                                                  'get_version': [],
+                                                                  'insert': [],
+                                                                  'query': []},
+                                    'comments': 'Automatically added on agent install',
+                                    'identity': 'platform.historian',
+                                    'enabled': True
+                              }
+                              ),
+                             ("platform.historian", True, None, True, None, True, None, True, None, True, None, True,
+                              False,
+                              {
+                                    'domain': None,
+                                    'address': None,
+                                    'mechanism': 'CURVE',
+                                    'credentials': 'e-v_K8vx6E5bfgI6uL5-I9m35kKWJQA062qLdfX-zEE',
+                                    'groups': [],
+                                    'roles': [],
+                                    'capabilities': {'edit_config_store': {'identity': 'platform.historian'}},
+                                    'rpc_method_authorizations': {'get_aggregate_topics': [],
+                                                                  'get_topic_list': [],
+                                                                  'get_topics_by_pattern': [],
+                                                                  'get_topics_metadata': [],
+                                                                  'get_version': [],
+                                                                  'insert': [],
+                                                                  'query': []},
+                                    'comments': 'Automatically added on agent install',
+                                    'user_id': 'platform.historian',
+                                    'enabled': True
+                              }
+                              ),
+                             ("platform.historian", True, False, False, False, False, False, False, False, False, False,
+                              False, False, {'domain': None}),
+                             ("platform.historian", False, True, False, False, False, False, False, False, False, False,
+                              False, False, {'address': None}),
+                             ("platform.historian", False, False, True, False, False, False, False, False, False, False,
+                              False, False, {'capabilities': {'edit_config_store': {'identity': 'platform.historian'
+                                                                                    }}}),
+                             ("platform.historian", False, False, False, True, False, False, False, False, False, False,
+                              False, False, {'roles': []}),
+                             ("platform.historian", False, False, False, False, True, False, False, False, False, False,
+                              False, False, {'groups': []}),
+                             ("platform.historian", False, False, False, False, False, True, False, False, False, False,
+                              False, False, {'mechanism': 'CURVE'}),
+                             ("platform.historian", False, False, False, False, False, False, True, False, False, False,
+                              False, False, {'credentials': 'e-v_K8vx6E5bfgI6uL5-I9m35kKWJQA062qLdfX-zEE'}),
+                             ("platform.historian", False, False, False, False, False, False, False, True, False, False,
+                              False, False, {'comments': 'Automatically added on agent install'}),
+                             ("platform.historian", False, False, False, False, False, False, False, False, True, False,
+                              False, False, {'enabled': True}),
+                             ("platform.historian", False, False, False, False, False, False, False, False, False, True,
+                              False, False,
+                              {'rpc_method_authorizations': {
+                                                                'get_aggregate_topics': [],
+                                                                'get_topic_list': [],
+                                                                'get_topics_by_pattern': [],
+                                                                'get_topics_metadata': [],
+                                                                'get_version': [],
+                                                                'insert': [],
+                                                                'query': []}}),
+                             ("platform.historian", False, False, False, False, False, False, False, False, False,
+                              False, True, False, {'user_id': 'platform.historian'}),
+                             ("platform.historian", False, False, False, False, False, False, False, False, False,
+                              False, False, True, {'identity': 'platform.historian'}),
+                             ("platform.historian", False, False, False, False, False, False, False, False, False,
+                              False, False, False, {}),
+                             ("<user_id>", False, True, None, True, None, True, None, True, None, True, None, True,
+                              {
+                                    'address': '<address>',
+                                    'mechanism': 'NULL',
+                                    'credentials': '<public_key>',
+                                    'groups': ['<group1>', '<group2>'],
+                                    'roles': ['<role1>', '<role2>'],
+                                    'capabilities': {'<capability1>': None, '<capability2>': None},
+                                    'rpc_method_authorizations': {},
+                                    'comments': '<comments>',
+                                    'user_id': '<user_id>',
+                                    'identity': None,
+                                    'enabled': True
+                              }
+                              ),
+                             ("<user_id>", False, None, True, None, True, None, True, None, True, None, True, None,
+                              {
+                                    'address': '<address>',
+                                    'mechanism': 'NULL',
+                                    'credentials': '<public_key>',
+                                    'groups': ['<group1>', '<group2>'],
+                                    'roles': ['<role1>', '<role2>'],
+                                    'capabilities': {'<capability1>': None, '<capability2>': None},
+                                    'rpc_method_authorizations': {},
+                                    'comments': '<comments>',
+                                    'user_id': '<user_id>',
+                                    'identity': None,
+                                    'enabled': True
+                              }
+                              ),
+                             ("<user_id>", True, False, None, True, None, True, None, True, None, True, None, True,
+                              {
+                                    'domain': '<domain>',
+                                    'mechanism': 'NULL',
+                                    'credentials': '<public_key>',
+                                    'groups': ['<group1>', '<group2>'],
+                                    'roles': ['<role1>', '<role2>'],
+                                    'capabilities': {'<capability1>': None, '<capability2>': None},
+                                    'rpc_method_authorizations': {},
+                                    'comments': '<comments>',
+                                    'user_id': '<user_id>',
+                                    'identity': None,
+                                    'enabled': True
+                              }
+                              ),
+                             ("<user_id>", True, None, False, True, None, True, None, True, None, True, None, True,
+                              {
+                                    'domain': '<domain>',
+                                    'address': '<address>',
+                                    'mechanism': 'NULL',
+                                    'credentials': '<public_key>',
+                                    'groups': ['<group1>', '<group2>'],
+                                    'roles': ['<role1>', '<role2>'],
+                                    'rpc_method_authorizations': {},
+                                    'comments': '<comments>',
+                                    'user_id': '<user_id>',
+                                    'identity': None,
+                                    'enabled': True
+                              }
+                              ),
+                             ("<user_id>", True, None, True, False, None, True, None, True, None, True, None, True,
+                              {
+                                    'domain': '<domain>',
+                                    'address': '<address>',
+                                    'mechanism': 'NULL',
+                                    'credentials': '<public_key>',
+                                    'groups': ['<group1>', '<group2>'],
+                                    'capabilities': {'<capability1>': None, '<capability2>': None},
+                                    'rpc_method_authorizations': {},
+                                    'comments': '<comments>',
+                                    'user_id': '<user_id>',
+                                    'identity': None,
+                                    'enabled': True
+                              }
+                              ),
+                             ("<user_id>", True, None, True, None, False, True, None, True, None, True, None, True,
+                              {
+                                    'domain': '<domain>',
+                                    'address': '<address>',
+                                    'mechanism': 'NULL',
+                                    'credentials': '<public_key>',
+                                    'roles': ['<role1>', '<role2>'],
+                                    'capabilities': {'<capability1>': None, '<capability2>': None},
+                                    'rpc_method_authorizations': {},
+                                    'comments': '<comments>',
+                                    'user_id': '<user_id>',
+                                    'identity': None,
+                                    'enabled': True
+                              }
+                              ),
+                             ("<user_id>", True, None, True, None, True, False, None, True, None, True, None, True,
+                              {
+                                    'domain': '<domain>',
+                                    'address': '<address>',
+                                    'credentials': '<public_key>',
+                                    'groups': ['<group1>', '<group2>'],
+                                    'roles': ['<role1>', '<role2>'],
+                                    'capabilities': {'<capability1>': None, '<capability2>': None},
+                                    'rpc_method_authorizations': {},
+                                    'comments': '<comments>',
+                                    'user_id': '<user_id>',
+                                    'identity': None,
+                                    'enabled': True
+                              }
+                              ),
+                             ("<user_id>", True, None, True, None, True, None, False, True, None, True, None, True,
+                              {
+                                    'domain': '<domain>',
+                                    'address': '<address>',
+                                    'mechanism': 'NULL',
+                                    'groups': ['<group1>', '<group2>'],
+                                    'roles': ['<role1>', '<role2>'],
+                                    'capabilities': {'<capability1>': None, '<capability2>': None},
+                                    'rpc_method_authorizations': {},
+                                    'comments': '<comments>',
+                                    'user_id': '<user_id>',
+                                    'identity': None,
+                                    'enabled': True
+                              }
+                              ),
+                             ("<user_id>", True, None, True, None, True, None, True, False, None, True, None, True,
+                              {
+                                    'domain': '<domain>',
+                                    'address': '<address>',
+                                    'mechanism': 'NULL',
+                                    'credentials': '<public_key>',
+                                    'groups': ['<group1>', '<group2>'],
+                                    'roles': ['<role1>', '<role2>'],
+                                    'capabilities': {'<capability1>': None, '<capability2>': None},
+                                    'rpc_method_authorizations': {},
+                                    'user_id': '<user_id>',
+                                    'identity': None,
+                                    'enabled': True
+                              }
+                              ),
+                             ("<user_id>", True, None, True, None, True, None, True, None, False, True, None, True,
+                              {
+                                    'domain': '<domain>',
+                                    'address': '<address>',
+                                    'mechanism': 'NULL',
+                                    'credentials': '<public_key>',
+                                    'groups': ['<group1>', '<group2>'],
+                                    'roles': ['<role1>', '<role2>'],
+                                    'capabilities': {'<capability1>': None, '<capability2>': None},
+                                    'rpc_method_authorizations': {},
+                                    'comments': '<comments>',
+                                    'user_id': '<user_id>',
+                                    'identity': None
+                              }
+                              ),
+                             ("<user_id>", True, None, True, None, True, None, True, None, True, False, None, True,
+                              {
+                                    'domain': '<domain>',
+                                    'address': '<address>',
+                                    'mechanism': 'NULL',
+                                    'credentials': '<public_key>',
+                                    'groups': ['<group1>', '<group2>'],
+                                    'roles': ['<role1>', '<role2>'],
+                                    'capabilities': {'<capability1>': None, '<capability2>': None},
+                                    'comments': '<comments>',
+                                    'user_id': '<user_id>',
+                                    'identity': None,
+                                    'enabled': True
+                              }
+                              ),
+                             ("<user_id>", True, None, True, None, True, None, True, None, True, None, False, True,
+                              {
+                                    'domain': '<domain>',
+                                    'address': '<address>',
+                                    'mechanism': 'NULL',
+                                    'credentials': '<public_key>',
+                                    'groups': ['<group1>', '<group2>'],
+                                    'roles': ['<role1>', '<role2>'],
+                                    'capabilities': {'<capability1>': None, '<capability2>': None},
+                                    'rpc_method_authorizations': {},
+                                    'comments': '<comments>',
+                                    'identity': None,
+                                    'enabled': True
+                              }
+                              ),
+                             ("<user_id>", True, None, True, None, True, None, True, None, True, None, True, False,
+                              {
+                                    'domain': '<domain>',
+                                    'address': '<address>',
+                                    'mechanism': 'NULL',
+                                    'credentials': '<public_key>',
+                                    'groups': ['<group1>', '<group2>'],
+                                    'roles': ['<role1>', '<role2>'],
+                                    'capabilities': {'<capability1>': None, '<capability2>': None},
+                                    'rpc_method_authorizations': {},
+                                    'comments': '<comments>',
+                                    'user_id': '<user_id>',
+                                    'enabled': True
+                              }
+                              ),
+                             ("<user_id>", True, False, False, False, False, False, False, False, False, False, False,
+                              False, {'domain': '<domain>'}),
+                             ("<user_id>", False, True, False, False, False, False, False, False, False, False, False,
+                              False, {'address': '<address>'}),
+                             ("<user_id>", False, False, True, False, False, False, False, False, False, False, False,
+                              False, {'capabilities': {'<capability1>': None, '<capability2>': None}}),
+                             ("<user_id>", False, False, False, True, False, False, False, False, False, False, False,
+                              False, {'roles': ['<role1>', '<role2>']}),
+                             ("<user_id>", False, False, False, False, True, False, False, False, False, False, False,
+                              False, {'groups': ['<group1>', '<group2>']}),
+                             ("<user_id>", False, False, False, False, False, True, False, False, False, False, False,
+                              False, {'mechanism': 'NULL'}),
+                             ("<user_id>", False, False, False, False, False, False, True, False, False, False, False,
+                              False, {'credentials': '<public_key>'}),
+                             ("<user_id>", False, False, False, False, False, False, False, True, False, False, False,
+                              False, {'comments': '<comments>'}),
+                             ("<user_id>", False, False, False, False, False, False, False, False, True, False, False,
+                              False, {'enabled': True}),
+                             ("<user_id>", False, False, False, False, False, False, False, False, False, True, False,
+                              False, {'rpc_method_authorizations': {}}),
+                             ("<user_id>", False, False, False, False, False, False, False, False, False, False, True,
+                              False, {'user_id': '<user_id>'}),
+                             ("<user_id>", False, False, False, False, False, False, False, False, False, False, False,
+                              True, {'identity': None}),
+                             ("<user_id>", False, False, False, False, False, False, False, False, False, False, False,
+                              False, {})
+                         ]
+                         )
+def test_handle_platforms_auth_auth_get_response(mock_platform_web_service, auth_user_id, domain, address, capabilities,
+                                                 roles, groups, mechanism, credentials, comments, enabled,
+                                                 rpc_method_authorizations, user_id, identity, expected):
+    path = f'/vui/platforms/my_instance_name/auths/{auth_user_id}'
+    query_string = f'&domain={domain}' if (domain or domain == False) else ''
+    query_string = query_string + f'&address={address}' if (address or address == False) else query_string + ''
+    query_string = query_string + f'&capabilities={capabilities}' if (capabilities or capabilities == False) else \
+        query_string + ''
+    query_string = query_string + f'&roles={roles}' if (roles or roles == False) else query_string + ''
+    query_string = query_string + f'&groups={groups}' if (groups or groups == False) else query_string + ''
+    query_string = query_string + f'&mechanism={mechanism}' if (mechanism or mechanism == False) else query_string + ''
+    query_string = query_string + f'&credentials={credentials}' if (
+                credentials or credentials == False) else query_string + ''
+    query_string = query_string + f'&comments={comments}' if (comments or comments == False) else query_string + ''
+    query_string = query_string + f'&enabled={enabled}' if (enabled or enabled == False) else query_string + ''
+    query_string = query_string + f'&rpc_method_authorizations={rpc_method_authorizations}' if (
+            rpc_method_authorizations or rpc_method_authorizations == False) else query_string + ''
+    query_string = query_string + f'&user_id={user_id}' if (user_id or user_id == False) else query_string + ''
+    query_string = query_string + f'&identity={identity}' if (identity or identity == False) else query_string + ''
+    env = get_test_web_env(path, method='GET', query_string=query_string, HTTP_AUTHORIZATION='Bearer foo')
+    vui_endpoints = VUIEndpoints(mock_platform_web_service)
+    vui_endpoints._rpc = _mock_agents_rpc
+    response = vui_endpoints.handle_platforms_auths(env, {})
+    assert json.loads(response.response[0]) == expected
+
+
+@pytest.mark.parametrize('auth_user_id, data_given, data_passed, index, status', [
+    ('platform.historian', {'domain': None,
+                            'address': None,
+                            'mechanism': 'CURVE',
+                            'credentials': 'e-v_K8vx6E5bfgI6uL5-I9m35kKWJQA062qLdfX-zEE',
+                            'groups': [],
+                            'roles': [],
+                            'capabilities': {'edit_config_store': {'identity': 'platform.historian'}},
+                            'rpc_method_authorizations': {'get_aggregate_topics': [],
+                                                          'get_topic_list': [],
+                                                          'get_topics_by_pattern': [],
+                                                          'get_topics_metadata': [],
+                                                          'get_version': [],
+                                                          'insert': [],
+                                                          'query': []},
+                            'comments': 'Automatically added on agent install',
+                            'user_id': 'platform.historian',
+                            'identity': 'platform.historian',
+                            'enabled': True},
+                                 {'domain': None,
+                                  'address': None,
+                                  'mechanism': 'CURVE',
+                                  'credentials': 'e-v_K8vx6E5bfgI6uL5-I9m35kKWJQA062qLdfX-zEE',
+                                  'groups': [],
+                                  'roles': [],
+                                  'capabilities': {'edit_config_store': {'identity': 'platform.historian'}},
+                                  'rpc_method_authorizations': {'get_aggregate_topics': [],
+                                                                'get_topic_list': [],
+                                                                'get_topics_by_pattern': [],
+                                                                'get_topics_metadata': [],
+                                                                'get_version': [],
+                                                                'insert': [],
+                                                                'query': []},
+                                  'comments': 'Automatically added on agent install',
+                                  'user_id': 'platform.historian',
+                                  'identity': 'platform.historian',
+                                  'enabled': True}, 0, '204'),
+    ('<user_id>', {'domain': '<updated_domain>',
+                   'address': '<address>',
+                   'mechanism': 'NULL',
+                   'credentials': '<public_key>',
+                   'groups': ['<updated_group1>', '<updated_group2>'],
+                   'roles': ['<role1>', '<role2>'],
+                   'capabilities': {'<capability1>': None, '<capability2>': None},
+                   'rpc_method_authorizations': {},
+                   'comments': '<updated_comments>',
+                   'user_id': '<updated_user_id>',
+                   'identity': None,
+                   'enabled': True},
+                     {'domain': '<updated_domain>',
+                      'address': '<address>',
+                      'mechanism': 'NULL',
+                      'credentials': '<public_key>',
+                      'groups': ['<updated_group1>', '<updated_group2>'],
+                      'roles': ['<role1>', '<role2>'],
+                      'capabilities': {'<capability1>': None, '<capability2>': None},
+                      'rpc_method_authorizations': {},
+                      'comments': '<updated_comments>',
+                      'user_id': '<updated_user_id>',
+                      'identity': None,
+                      'enabled': True}, 2, '204'),
+    ('<does_not_exist>', {'domain': '<updated_domain>',
+                          'address': '<address>',
+                          'mechanism': 'NULL',
+                          'credentials': '<public_key>',
+                          'groups': ['<updated_group1>', '<updated_group2>'],
+                          'roles': ['<role1>', '<role2>'],
+                          'capabilities': {'<capability1>': None, '<capability2>': None},
+                          'rpc_method_authorizations': {},
+                          'comments': '<updated_comments>',
+                          'user_id': '<updated_user_id>',
+                          'identity': None,
+                          'enabled': True},
+                             {'domain': '<updated_domain>',
+                              'address': '<address>',
+                              'mechanism': 'NULL',
+                              'credentials': '<public_key>',
+                              'groups': ['<updated_group1>', '<updated_group2>'],
+                              'roles': ['<role1>', '<role2>'],
+                              'capabilities': {'<capability1>': None, '<capability2>': None},
+                              'rpc_method_authorizations': {},
+                              'comments': '<updated_comments>',
+                              'user_id': '<updated_user_id>',
+                              'identity': None,
+                              'enabled': True}, 2, '400'),
+
+])
+def test_handle_platforms_auth_auth_put_response(mock_platform_web_service, auth_user_id, data_given, data_passed, index,
+                                                 status):
+    path = f'/vui/platforms/my_instance_name/auths/{auth_user_id}'
+    env = get_test_web_env(path, method='PUT', CONTENT_TYPE='application/json', HTTP_AUTHORIZATION='Bearer foo')
+    vui_endpoints = VUIEndpoints(mock_platform_web_service)
+    vui_endpoints._rpc = MagicMock(wraps=_mock_agents_rpc)
+    response = vui_endpoints.handle_platforms_auths(env, data_given)
+    check_response_codes(response, status)
+    if status == '204':
+        vui_endpoints._rpc.assert_has_calls([mock.call('platform.auth', 'auth_file.read',
+                                                       external_platform='my_instance_name'),
+                                             mock.call('platform.auth', 'auth_file.update_by_index', data_passed, index,
+                                                       external_platform='my_instance_name')])
+    elif status == '400':
+        assert json.loads(response.response[0]) == {"Error": f"The auth-user-id '{auth_user_id}' doesn't exist."}
+
+
+@pytest.mark.parametrize('data_given, data_passed, config_location, status, error_message',
+                         [
+                             ({"domain": "<domain2>",
+                               "address": "<address2>",
+                               "mechanism": "NULL",
+                               "credentials": "<public_key3>",
+                               "groups": [
+                                   "<group1>",
+                                   "<group2>"
+                               ],
+                               "roles": [
+                                   "<role1>",
+                                   "<role2>"
+                               ],
+                               "capabilities": {
+                                   "<capability1>": None,
+                                   "<capability2>": None
+                               },
+                               "rpc_method_authorizations": {},
+                               "comments": "<comments>",
+                               "user_id": "<user_id6>",
+                               "identity": None,
+                               "enabled": True},
+                              {"domain": "<domain2>",
+                               "address": "<address2>",
+                               "mechanism": "NULL",
+                               "credentials": "<public_key3>",
+                               "groups": [
+                                   "<group1>",
+                                   "<group2>"
+                               ],
+                               "roles": [
+                                   "<role1>",
+                                   "<role2>"
+                               ],
+                               "capabilities": {
+                                   "<capability1>": None,
+                                   "<capability2>": None
+                               },
+                               "rpc_method_authorizations": {},
+                               "comments": "<comments>",
+                               "user_id": "<user_id6>",
+                               "identity": None,
+                               "enabled": True}, "/vui/platforms/my_instance_name/auths/<user_id6>", '201',None
+                              ),
+                             (
+                                 {'domain': '<domain>',
+                                  'address': '<address>',
+                                  'mechanism': 'NULL',
+                                  'credentials': '<public_key>',
+                                  'groups': ['<group1>', '<group2>'],
+                                  'roles': ['<role1>', '<role2>'],
+                                  'capabilities': {'<capability1>': None, '<capability2>': None},
+                                  'rpc_method_authorizations': {},
+                                  'comments': '<comments>',
+                                  'user_id': '<user_id>',
+                                  'identity': None,
+                                  'enabled': True},
+                                 {'domain': '<domain>',
+                                  'address': '<address>',
+                                  'mechanism': 'NULL',
+                                  'credentials': '<public_key>',
+                                  'groups': ['<group1>', '<group2>'],
+                                  'roles': ['<role1>', '<role2>'],
+                                  'capabilities': {'<capability1>': None, '<capability2>': None},
+                                  'rpc_method_authorizations': {},
+                                  'comments': '<comments>',
+                                  'user_id': '<user_id>',
+                                  'identity': None,
+                                  'enabled': True},
+                                 "/vui/platforms/my_instance_name/auths/<user_id>", '409',
+                                 {"Error": f"The auth-user-id '<user_id>' already exists."}
+                             ),
+                             ({'domain': '<domain>',
+                               'address': '<address>',
+                               'mechanism': 'NULL',
+                               'credentials': '<public_key>',
+                               'groups': ['<group1>', '<group2>'],
+                               'roles': ['<role1>', '<role2>'],
+                               'capabilities': {'<capability1>': None, '<capability2>': None},
+                               'rpc_method_authorizations': {},
+                               'comments': '<comments>',
+                               'user_id': '<user_id2>',
+                               'identity': None,
+                               'enabled': True},
+                                 {'domain': '<domain>',
+                                  'address': '<address>',
+                                  'mechanism': 'NULL',
+                                  'credentials': '<public_key>',
+                                  'groups': ['<group1>', '<group2>'],
+                                  'roles': ['<role1>', '<role2>'],
+                                  'capabilities': {'<capability1>': None, '<capability2>': None},
+                                  'rpc_method_authorizations': {},
+                                  'comments': '<comments>',
+                                  'user_id': '<user_id>',
+                                  'identity': None,
+                                  'enabled': True},
+                                 None, '409',
+                              {'Error': "Entry matches domain, address and credentials of already existing record."}),
+                             ({'domain': '<domain>',
+                               'address': '<address2>',
+                               'mechanism': 'NU',
+                               'credentials': '<public_key>',
+                               'groups': ['<group1>', '<group2>'],
+                               'roles': ['<role1>', '<role2>'],
+                               'capabilities': {'<capability1>': None, '<capability2>': None},
+                               'rpc_method_authorizations': {},
+                               'comments': '<comments>',
+                               'user_id': '<user_id2>',
+                               'identity': None,
+                               'enabled': True},
+                                 {'domain': '<domain>',
+                                  'address': '<address2>',
+                                  'mechanism': 'NULL',
+                                  'credentials': '<public_key>',
+                                  'groups': ['<group1>', '<group2>'],
+                                  'roles': ['<role1>', '<role2>'],
+                                  'capabilities': {'<capability1>': None, '<capability2>': None},
+                                  'rpc_method_authorizations': {},
+                                  'comments': '<comments>',
+                                  'user_id': '<user_id2>',
+                                  'identity': None,
+                                  'enabled': True},
+                                 None, '400',
+                              {'Error': "Mechanism can only be 'NULL', 'PLAIN', or 'CURVE'"})
+                         ]
+                         )
+def test_handle_platforms_auth_post_response(mock_platform_web_service, data_given, data_passed, config_location,
+                                             status, error_message):
+    path = '/vui/platforms/my_instance_name/auths'
+    env = get_test_web_env(path, method='POST', CONTENT_TYPE='application/json', HTTP_AUTHORIZATION='Bearer foo')
+    vui_endpoints = VUIEndpoints(mock_platform_web_service)
+    vui_endpoints._rpc = MagicMock(wraps=_mock_agents_rpc)
+    response = vui_endpoints.handle_platforms_auths(env, data_given)
+    check_response_codes(response, status)
+    assert response.location == config_location
+    if status == '201':
+        vui_endpoints._rpc.assert_has_calls([mock.call('platform.auth', 'auth_file.read',
+                                                       external_platform='my_instance_name'),
+                                             mock.call('platform.auth', 'auth_file.add', data_passed,
+                                                       external_platform='my_instance_name')
+                                             ])
+    elif status == '400':
+        assert json.loads(response.response[0]) == error_message
+    elif status == '409':
+        assert json.loads(response.response[0]) == error_message
+
+
+@pytest.mark.parametrize('auth_user_id, index, status', [
+    ('<user_id>', 2, '204'),
+    ('<user_id2>', None, '400')
+])
+def test_handle_platforms_auth_auth_delete_response(mock_platform_web_service, auth_user_id, index, status):
+    path = f'/vui/platforms/my_instance_name/auths/{auth_user_id}'
+    env = get_test_web_env(path, method='DELETE', HTTP_AUTHORIZATION='Bearer foo')
+    vui_endpoints = VUIEndpoints(mock_platform_web_service)
+    vui_endpoints._rpc = MagicMock(wraps=_mock_agents_rpc)
+    response = vui_endpoints.handle_platforms_auths(env, {})
+    check_response_codes(response, status)
+    if status == '204':
+        vui_endpoints._rpc.assert_has_calls([mock.call('platform.auth', 'auth_file.read',
+                                                       external_platform='my_instance_name'),
+                                             mock.call('platform.auth', 'auth_file.remove_by_index', index,
+                                                       external_platform='my_instance_name')])
+    elif status == '400':
+        assert json.loads(response.response[0]) == {"Error": "User ID '<user_id2>' not found."}
 
 
 def _mock_devices_rpc(peer, meth, *args, external_platform=None, **kwargs):
