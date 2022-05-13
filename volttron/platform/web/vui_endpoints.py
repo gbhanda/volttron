@@ -103,7 +103,7 @@ class VUIEndpoints:
                         }
                     },
                     'auths': {
-                        'endpoint-active': False,
+                        'endpoint-active': True,
                     },
                     'configs': {
                         'endpoint-active': False,
@@ -169,6 +169,8 @@ class VUIEndpoints:
             (re.compile('^/vui/platforms/[^/]+/agents/[^/]+/running/?$'), 'callable', self.handle_platforms_agents_running),
             (re.compile('^/vui/platforms/[^/]+/agents/[^/]+/status/?$'), 'callable', self.handle_platforms_agents_status),
             (re.compile('^/vui/platforms/[^/]+/agents/[^/]+/tag/?$'), 'callable', self.handle_platforms_agents_tag),
+            (re.compile('^/vui/platforms/[^/]+/auths/?$'), 'callable', self.handle_platforms_auths),
+            (re.compile('^/vui/platforms/[^/]+/auths/.*/?$'), 'callable', self.handle_platforms_auths),
             (re.compile('^/vui/platforms/[^/]+/devices/?$'), 'callable', self.handle_platforms_devices),
             (re.compile('^/vui/platforms/[^/]+/devices/.*/?$'), 'callable', self.handle_platforms_devices),
             (re.compile('^/vui/platforms/[^/]+/historians/?$'), 'callable', self.handle_platforms_historians),
@@ -548,6 +550,120 @@ class VUIEndpoints:
                                 400, content_type='application/json')
             self._rpc('control', 'tag_agent', uuid, None, external_platform=platform)
             return Response(status=204)
+
+    @endpoint
+    def handle_platforms_auths(self, env: dict, data: dict) -> Response:
+        """
+        Endpoints for /vui/platforms/:platform/auths/ and /vui/platforms/:platform/auths/:topic/
+        :param env:
+        :param data:
+        :return:
+        """
+        _log.debug('VUI: In handle_platforms_auths')
+        path_info = env.get('PATH_INFO')
+        request_method = env.get("REQUEST_METHOD")
+        query_params = url_decode(env['QUERY_STRING'])
+        no_auth_user_id = re.match('^/vui/platforms/([^/]+)/auths/?$', path_info)
+        if no_auth_user_id:
+            platform, auth_user_id = tuple(no_auth_user_id.groups()) + ('',)
+        else:
+            platform, auth_user_id = re.match('^/vui/platforms/([^/]+)/auths/(.*)/?$', path_info).groups()
+            auth_user_id = auth_user_id[:-1] if auth_user_id[-1] == '/' else auth_user_id
+        list_of_auth = self._rpc('platform.auth', 'auth_file.read', external_platform=platform)['allow_list']
+        if request_method == 'GET':
+            list_of_user_id = []
+            for item in list_of_auth:
+                list_of_user_id.append(item['user_id'])
+            route_dict = self._route_options(path_info, list_of_user_id)
+            if no_auth_user_id:
+                records = self._to_bool(query_params.get('records')) if query_params.get('records') else False
+                if records:
+                    list_of_auth_params = self._get_auth_params(query_params)
+                    auth_dict = {}
+                    for index, item in enumerate(route_dict["route_options"]):
+                        auth_dict[item] = {"route": route_dict["route_options"][item], "record": {}}
+                        for params in list_of_auth_params:
+                            auth_dict[item]["record"][params] = list_of_auth[index][params]
+                    return Response(json.dumps(auth_dict), 200, content_type='application/json')
+                else:
+                    return Response(json.dumps(route_dict), 200, content_type='application/json')
+
+            else:
+                try:
+                    list_of_auth_params = self._get_auth_params(query_params)
+                    auth_dict = {}
+                    for item in list_of_auth:
+                        if item['user_id'] == auth_user_id:
+                            for params in list_of_auth_params:
+                                auth_dict[params] = item[params]
+                            return Response(json.dumps(auth_dict), 200, content_type='application/json')
+                    raise ValueError(f"User ID '{auth_user_id}' not found.")
+                except ValueError as e:
+                    return Response(json.dumps({"Error": f"{e}"}), 400, content_type='application/json')
+
+        elif request_method == 'PUT' and (not no_auth_user_id):
+            auth_dict = {}
+            auth_attr_list = ['domain', 'address', 'mechanism', 'credentials', 'groups', 'roles', 'capabilities',
+                              'rpc_method_authorizations', 'comments', 'user_id', 'identity', 'enabled']
+            for index, item in enumerate(list_of_auth):
+                if item['user_id'] == auth_user_id:
+                    if "mechanism" in data:
+                        data["mechanism"] = data["mechanism"].upper()
+                    if data["mechanism"] not in ["NULL", "PLAIN", "CURVE"]:
+                        return Response(json.dumps({'Error': "Mechanism can only be 'NULL', 'PLAIN', or 'CURVE'"}),
+                                        400, content_type='application/json')
+                    for attr in auth_attr_list:
+                        if attr in data:
+                            auth_dict[attr] = data[attr]
+                        elif item[attr] == {}:
+                            auth_dict[attr] = {}
+                        elif item[attr] is None:
+                            auth_dict[attr] = None
+                        elif item[attr] == 'True' or item[attr] == 'False':
+                            auth_dict[attr] = self._to_bool(item[attr])
+                        else:
+                            auth_dict[attr] = item[attr]
+                    self._rpc('platform.auth', 'auth_file.update_by_index', auth_dict, index,
+                              external_platform=platform)
+                    return Response(None, 204, content_type='application/json')
+            return Response(json.dumps({"Error": f"The auth-user-id '{auth_user_id}' doesn't exist."}),
+                            400, content_type='application/json')
+
+        elif request_method == 'POST' and no_auth_user_id:
+            auth_user_id = data['user_id']
+            _log.debug(f'auth_user_id: {auth_user_id}')
+            _log.debug(f"auth_user_id_list: {[x['user_id'] for x in list_of_auth]}")
+            _log.debug(f"auth_user_id verdict: {auth_user_id in [x['user_id'] for x in list_of_auth]}")
+            if auth_user_id in [x['user_id'] for x in list_of_auth]:
+                response = Response(json.dumps({"Error": f"The auth-user-id '{auth_user_id}' already exists."}),
+                                    409, content_type='application/json')
+                response.location = f'/vui/platforms/{platform}/auths/{auth_user_id}'
+                return response
+            data["mechanism"] = data["mechanism"].upper()
+            if data["mechanism"] not in ["NULL", "PLAIN", "CURVE"]:
+                return Response(json.dumps({'Error': "Mechanism can only be 'NULL', 'PLAIN', or 'CURVE'"}),
+                                400, content_type='application/json')
+            if {'domain': data['domain'], 'address': data['address'], 'credentials': data['credentials']} in \
+                    [{'domain': x['domain'], 'address': x['address'], 'credentials': x['credentials']}
+                     for x in list_of_auth]:
+                return Response(json.dumps({'Error': "Entry matches domain, address and credentials of already "
+                                                     "existing record."}),
+                                409, content_type='application/json')
+
+            self._rpc('platform.auth', 'auth_file.add', data, external_platform=platform)
+            response = Response(None, 201, content_type='application/json')
+            response.location = f'/vui/platforms/{platform}/auths/{auth_user_id}'
+            return response
+
+        elif request_method == 'DELETE':
+            try:
+                for index, item in enumerate(list_of_auth):
+                    if item['user_id'] == auth_user_id:
+                        self._rpc('platform.auth', 'auth_file.remove_by_index', index, external_platform=platform)
+                        return Response(None, 204, content_type='application/json')
+                raise NotImplementedError(f"User ID '{auth_user_id}' not found.")
+            except NotImplementedError as e:
+                return Response(json.dumps({"Error": f"{e}"}), 400, content_type='application/json')
 
     @endpoint
     def handle_platforms_devices(self, env: dict, data: dict) -> Response:
@@ -964,6 +1080,15 @@ class VUIEndpoints:
             return [a['identity'] for a in agent_list]
         elif agent_state == 'packaged':
             return [os.path.splitext(a)[0] for a in os.listdir(f'{self._agent.core.volttron_home}/packaged')]
+
+    def _get_auth_params(self, query_params):
+        list_of_auth_params = ['domain', 'address', 'mechanism', 'credentials', 'groups', 'roles', 'capabilities',
+                               'rpc_method_authorizations', 'comments', 'user_id', 'identity', 'enabled']
+        list_of_auth_params_passed = []
+        for params in list_of_auth_params:
+            if not query_params.get(params) or self._to_bool(query_params.get(params)):
+                list_of_auth_params_passed.append(params)
+        return list_of_auth_params_passed
 
     def _get_status(self, platform: str):
         list_of_agents = self._rpc('control', 'list_agents', external_platform=platform)
