@@ -202,7 +202,7 @@ class VUIEndpoints:
         request_method = env.get("REQUEST_METHOD")
         if request_method == 'GET':
             platforms = self._get_platforms()
-            response = json.dumps(self._route_options(path_info, platforms))
+            response = json.dumps(self._links(path_info, platforms))
             return Response(response, 200, content_type='application/json')
 
     @endpoint
@@ -242,7 +242,7 @@ class VUIEndpoints:
                 return Response(json.dumps(error), 400, content_type='application/json')
             else:
                 agents = self._get_agents(platform, agent_state, include_hidden)
-                return Response(json.dumps(self._route_options(path_info, agents)), 200,
+                return Response(json.dumps(self._links(path_info, agents)), 200,
                                 content_type='application/json')
 
     @endpoint
@@ -294,10 +294,13 @@ class VUIEndpoints:
         platform, vip_identity = re.match('^/vui/platforms/([^/]+)/agents/([^/]+)/?$', path_info).groups()
         if request_method == 'GET':
             active_routes = self._find_active_sub_routes(['vui', 'platforms', 'agents'], path_info=path_info)
-            # If RPC endpoint is enabled, check if agent is running and disallow if it is not.
-            if 'rpc' in active_routes['route_options'].keys():
-                if vip_identity not in self._get_agents(platform, 'running'):
-                    active_routes['route_options'].pop('rpc')
+            agent_state = self._get_agent_state(platform, vip_identity)
+            # If agent is not installed, only allow configs endpoint.
+            if agent_state == 'not_installed' and 'configs' in active_routes['links'].keys():
+                active_routes['links'] = {'configs': active_routes['links'].pop('configs')}
+            # If RPC endpoint is enabled and agent is installed but not running, disallow rpc endpoint.
+            elif agent_state == 'installed' and 'rpc' in active_routes['links'].keys():
+                active_routes['links'].pop('rpc')
             return Response(json.dumps(active_routes), 200, content_type='application/json')
 
     @endpoint
@@ -328,7 +331,7 @@ class VUIEndpoints:
                     if vip_identity != '-':
                         setting_list = self._rpc('config.store', 'manage_list_configs', vip_identity,
                                                  external_platform=platform)
-                        route_dict = self._route_options(path_info, setting_list)
+                        route_dict = self._links(path_info, setting_list)
                         return Response(json.dumps(route_dict), 200, content_type='application/json')
                     else:
                         list_of_agents = self._rpc('config.store', 'manage_list_stores', external_platform=platform)
@@ -398,9 +401,10 @@ class VUIEndpoints:
             try:
                 list_of_agents = self._rpc('control', 'list_agents', external_platform=platform)
                 result = next(item['priority'] for item in list_of_agents if item['identity'] == vip_identity)
-                status = True if result else False
-                return Response(json.dumps({'status': f'{status}', 'priority': f'{result}'}), 200,
-                                content_type='application/json')
+                result = int(result) if result else result
+                status = True if result is not None else False
+                ret_val = {'status': status, 'priority': result}
+                return Response(json.dumps(ret_val), 200, content_type='application/json')
             except StopIteration:
                 return Response(json.dumps({'error': f'Agent "{vip_identity}" not found.'}),
                                 400, content_type='application/json')
@@ -456,7 +460,7 @@ class VUIEndpoints:
         platform, vip_identity = re.match('^/vui/platforms/([^/]+)/agents/([^/]+)/rpc/?$', path_info).groups()
         if request_method == 'GET':
             method_dict = self._rpc(vip_identity, 'inspect', external_platform=platform)
-            response = self._route_options(path_info, method_dict.get('methods'))
+            response = self._links(path_info, method_dict.get('methods'))
             return Response(json.dumps(response), 200, content_type='application/json')
 
     @endpoint
@@ -661,7 +665,7 @@ class VUIEndpoints:
                 else:
                     # All topics are not complete to points and read_all=False -- return route to next segments:
                     ret_dict = {
-                        'route_options': device_tree.get_children_dict([n.identifier for n in topic_nodes],
+                        'links': device_tree.get_children_dict([n.identifier for n in topic_nodes],
                                                                        replace_topic=topic,
                                                                        prefix=f'/vui/platforms/{platform}')
                     }
@@ -800,7 +804,7 @@ class VUIEndpoints:
 
         if request_method == 'GET':
             agents = self._get_agents(platform)
-            response = json.dumps(self._route_options(path_info, [agent for agent in agents if 'historian' in agent]))
+            response = json.dumps(self._links(path_info, [agent for agent in agents if 'historian' in agent]))
             return Response(response, 200, content_type='application/json')
 
     @endpoint
@@ -810,9 +814,9 @@ class VUIEndpoints:
         platform, vip_identity = re.match('^/vui/platforms/([^/]+)/historians/([^/]+)/?$', path_info).groups()
 
         if request_method == 'GET':
-            route_options = {'route_options': {'topics': f'/vui/platforms/{platform}/historians/{vip_identity}/topics'}}
+            links = {'links': {'topics': f'/vui/platforms/{platform}/historians/{vip_identity}/topics'}}
 
-            return Response(json.dumps(route_options), 200, content_type='application/json')
+            return Response(json.dumps(links), 200, content_type='application/json')
 
     @endpoint
     def handle_platforms_historians_historian_topics(self, env: dict, data: dict) -> Response:
@@ -904,7 +908,7 @@ class VUIEndpoints:
                 else:
                     # All topics are not complete to points and read_all=False -- return route to next segments:
                     ret_dict = {
-                        'route_options': historian_tree.get_children_dict([n.identifier for n in topic_nodes],
+                        'links': historian_tree.get_children_dict([n.identifier for n in topic_nodes],
                                                                           replace_topic=f'{historian}/topics/{topic}',
                                                                           prefix=f'/vui/platforms/{platform}')}
                     return Response(json.dumps(ret_dict), 200, content_type='application/json')
@@ -959,7 +963,7 @@ class VUIEndpoints:
         if not path_info:
             return keys
         else:
-            return self._route_options(path_info, keys) if enclose else self._route_options(path_info, keys, False)
+            return self._links(path_info, keys) if enclose else self._links(path_info, keys, False)
 
     def _get_platforms(self):
         platforms = []
@@ -990,6 +994,15 @@ class VUIEndpoints:
             return [a['identity'] for a in agent_list]
         elif agent_state == 'packaged':
             return [os.path.splitext(a)[0] for a in os.listdir(f'{self._agent.core.volttron_home}/packaged')]
+
+    def _get_agent_state(self, platform: str, vip_identity: str) -> str:
+        agent_list = self._rpc('control', 'list_agents', external_platform=platform)
+        installed_agents = [a['identity'] for a in agent_list]
+        peerlist = self._rpc('control', 'peerlist', external_platform=platform)
+        if vip_identity in installed_agents:
+            return 'running' if vip_identity in peerlist else 'installed'
+        else:
+            return 'not_installed'
 
     def _get_status(self, platform: str):
         list_of_agents = self._rpc('control', 'list_agents', external_platform=platform)
@@ -1022,9 +1035,9 @@ class VUIEndpoints:
         return result
 
     @staticmethod
-    def _route_options(path_info, option_segments, enclosing_dict=True):
-        route_options = {segment: normpath('/'.join([path_info, segment])) for segment in option_segments}
-        return route_options if not enclosing_dict else {'route_options': route_options}
+    def _links(path_info, option_segments, enclosing_dict=True):
+        links = {segment: normpath('/'.join([path_info, segment])) for segment in option_segments}
+        return links if not enclosing_dict else {'links': links}
 
     @staticmethod
     def _to_bool(values):
