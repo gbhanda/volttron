@@ -264,14 +264,14 @@ class VUIEndpoints:
                             content_type='application/json')
 
         if request_method == 'GET':
-            status = self._agent_running(vip_identity)
+            status = self._agent_running(platform, vip_identity)
             return Response(json.dumps({'running': status}), 200, content_type='application/json')
 
         elif request_method == 'PUT':
             if restart:
                 self._rpc('control', 'restart_agent', uuid, external_platform=platform)
             else:
-                if self._agent_running(vip_identity):
+                if self._agent_running(platform, vip_identity):
                     return Response(json.dumps({'error': f'Agent: {vip_identity} is already running.'}), 400,
                                     content_type='application/json')
                 self._rpc('control', 'start_agent', uuid, external_platform=platform)

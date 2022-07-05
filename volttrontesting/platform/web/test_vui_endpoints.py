@@ -740,9 +740,9 @@ def test_handle_platforms_agents_health_status_code(mock_platform_web_service, m
 
 
 @pytest.mark.parametrize("vip_identity, expected", [
-('run1', {'status': 'GOOD', 'context': None, 'last_updated': '2022-03-27T15:41:32.293441+00:00'}),
-('stopped1', {'error': f'No agent "stopped1" is running.'}),
-('not_exist', {'error': 'No agent "not_exist" is running.'})])
+    ('run1', {'status': 'GOOD', 'context': None, 'last_updated': '2022-03-27T15:41:32.293441+00:00'}),
+    ('stopped1', {'error': f'No agent "stopped1" is running.'}),
+    ('not_exist', {'error': 'No agent "not_exist" is running.'})])
 def test_handle_platforms_agents_health_get_response(mock_platform_web_service, vip_identity, expected):
     path = f'/vui/platforms/my_instance_name/agents/{vip_identity}/health'
     env = get_test_web_env(path, method='GET', HTTP_AUTHORIZATION='Bearer foo')
