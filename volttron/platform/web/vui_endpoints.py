@@ -263,15 +263,19 @@ class VUIEndpoints:
             return Response(json.dumps({'error': f'Agent "{vip_identity}" not found.'}), 400,
                             content_type='application/json')
 
+        def _agent_running(vip_identity):
+            peerlist = self._rpc('control', 'peerlist', external_platform=platform)
+            return True if vip_identity in peerlist else False
+
         if request_method == 'GET':
-            status = self._agent_running(platform, vip_identity)
+            status = _agent_running(vip_identity)
             return Response(json.dumps({'running': status}), 200, content_type='application/json')
 
         elif request_method == 'PUT':
             if restart:
                 self._rpc('control', 'restart_agent', uuid, external_platform=platform)
             else:
-                if self._agent_running(platform, vip_identity):
+                if _agent_running(vip_identity):
                     return Response(json.dumps({'error': f'Agent: {vip_identity} is already running.'}), 400,
                                     content_type='application/json')
                 self._rpc('control', 'start_agent', uuid, external_platform=platform)
@@ -943,10 +947,6 @@ class VUIEndpoints:
         if request_method == 'DELETE':
             self._rpc('control', 'clear_status', True, external_platform=platform)
             return Response(status=204)
-
-    def _agent_running(self, platform, vip_identity):
-        peerlist = self._rpc('control', 'peerlist', external_platform=platform)
-        return True if vip_identity in peerlist else False
 
     def _find_active_sub_routes(self, segments: list, path_info: str = None, enclose=True) -> dict or list:
         """
