@@ -25,8 +25,14 @@ ACTIVE_ROUTES = {
             'platforms': {'endpoint-active': True,
                           'agents': {'endpoint-active': True,
                                      'configs': {'endpoint-active': True},
+                                     'enabled': {'endpoint-active': True},
+                                     'front-ends': {'endpoint-active': False},
+                                     'health': {'endpoint-active': False},
+                                     'pubsub': {'endpoint-active': False},
                                      'rpc': {'endpoint-active': True},
-                                     'frontends': {'endpoint-active': False}
+                                     'running': {'endpoint-active': True},
+                                     'status': {'endpoint-active': True},
+                                     'tag': {'endpoint-active': True}
                                      },
                           'devices': {'endpoint-active': True},
                           'status': {'endpoint-active': False}
@@ -84,16 +90,16 @@ def check_response_codes(response, status):
     assert status in response.status
 
 
-def check_route_options_return(response, keys: list = None, leading_path: str = None):
+def check_links_return(response, keys: list = None, leading_path: str = None):
     body = json.loads(response.response[0])
     assert isinstance(body, dict)
-    assert isinstance(body['route_options'], dict)
+    assert isinstance(body['links'], dict)
     if keys:
-        assert len(keys) == len(body['route_options'].keys())
-        assert all([key in body['route_options'].keys() for key in keys])
+        assert len(keys) == len(body['links'].keys())
+        assert all([key in body['links'].keys() for key in keys])
     if keys and leading_path:
-        assert all([re.match(f'{leading_path}/[^/]+/?$', value) for value in body['route_options'].values()])
-    return body['route_options']
+        assert all([re.match(f'{leading_path}/[^/]+/?$', value) for value in body['links'].values()])
+    return body['links']
 
 
 def test_get_routes(mock_platform_web_service):
@@ -131,25 +137,26 @@ def test_get_platforms(mock_platform_web_service, platforms):
             assert retval == [vui_endpoints._agent.core.instance_name]
 
 
-@pytest.mark.parametrize('segments, expected_keys, expected_route_options',
+@pytest.mark.parametrize('segments, expected_keys, expected_links',
                          [
                              (['vui'], ['platforms'], {'platforms': '/foo/bar/platforms'}),
                              (['vui', 'platforms'], ['agents', 'devices'],
                               {'agents': '/foo/bar/agents', 'devices': '/foo/bar/devices'}),
-                             (['vui', 'platforms', 'agents'], ['configs', 'rpc'],
-                              {'rpc': '/foo/bar/rpc', 'configs': '/foo/bar/configs'}),
+                             (['vui', 'platforms', 'agents'], ['configs', 'enabled', 'rpc', 'running', 'status', 'tag'],
+                              {'rpc': '/foo/bar/rpc', 'configs': '/foo/bar/configs', 'enabled': '/foo/bar/enabled',
+                              'running': '/foo/bar/running', 'status': '/foo/bar/status', 'tag': '/foo/bar/tag'}),
                              (['vui', 'platforms', 'agents', 'configs'], [], {}),
                              (['vui', 'platforms', 'agents', 'rpc'], [], {}),
                              (['vui', 'platforms', 'devices'], [], {}),
                              (['vui', 'platforms', 'status'], [], {}),
                              (['vui', 'historians'], [], {}),
                          ])
-def test_find_active_sub_routes(mock_platform_web_service, segments, expected_keys, expected_route_options):
+def test_find_active_sub_routes(mock_platform_web_service, segments, expected_keys, expected_links):
     vui_endpoints = VUIEndpoints(mock_platform_web_service)
     vui_endpoints.active_routes = ACTIVE_ROUTES
     assert vui_endpoints._find_active_sub_routes(segments) == expected_keys
-    assert vui_endpoints._find_active_sub_routes(segments, '/foo/bar', False) == expected_route_options
-    assert vui_endpoints._find_active_sub_routes(segments, '/foo/bar') == {'route_options': expected_route_options}
+    assert vui_endpoints._find_active_sub_routes(segments, '/foo/bar', False) == expected_links
+    assert vui_endpoints._find_active_sub_routes(segments, '/foo/bar') == {'links': expected_links}
 
 
 @pytest.mark.parametrize('values, expected',
@@ -165,16 +172,16 @@ def test_to_bool(mock_platform_web_service, values, expected):
     assert vui_endpoints._to_bool(values) == expected
 
 
-@pytest.mark.parametrize('option_segments, expected_route_options',
+@pytest.mark.parametrize('option_segments, expected_links',
                          [
                              ([], {}),
                              (['foo', 'bar', 'baz'],
                               {'foo': '/foo/bar/foo', 'bar': '/foo/bar/bar', 'baz': '/foo/bar/baz'})
                          ])
-def test_route_options(mock_platform_web_service, option_segments, expected_route_options):
+def test_links(mock_platform_web_service, option_segments, expected_links):
     vui_endpoints = VUIEndpoints(mock_platform_web_service)
-    assert vui_endpoints._route_options('/foo/bar', option_segments, False) == expected_route_options
-    assert vui_endpoints._route_options('/foo/bar', option_segments) == {'route_options': expected_route_options}
+    assert vui_endpoints._links('/foo/bar', option_segments, False) == expected_links
+    assert vui_endpoints._links('/foo/bar', option_segments) == {'links': expected_links}
 
 
 def test_rpc(mock_platform_web_service):
@@ -200,7 +207,7 @@ def test_handle_vui_root(mock_platform_web_service, method, status):
     response = vui_endpoints.handle_vui_root(env, {})
     check_response_codes(response, status)
     if '200' in response.status:
-        check_route_options_return(response)
+        check_links_return(response)
 
 
 @pytest.mark.parametrize("method, status", gen_response_codes(['GET']))
@@ -230,14 +237,14 @@ def test_handle_platforms_response(mock_platform_web_service, platforms):
             if this_instance not in platforms:
                 platforms.insert(0, this_instance)
             response = vui_endpoints.handle_platforms(env, {})
-            route_options = check_route_options_return(response, platforms, path)
+            links = check_links_return(response, platforms, path)
     else:
         with mock.patch('builtins.open', mock.mock_open()) as mocked_open:
             mocked_open.side_effect = platforms
             response = vui_endpoints.handle_platforms(env, {})
-            route_options = check_route_options_return(response, [vui_endpoints.local_instance_name], path)
+            links = check_links_return(response, [vui_endpoints.local_instance_name], path)
     assert '200' in response.status
-    assert list(route_options.keys())[0] == vui_endpoints.local_instance_name
+    assert list(links.keys())[0] == vui_endpoints.local_instance_name
 
 
 @pytest.mark.parametrize("method, status", gen_response_codes(['GET']))
@@ -256,7 +263,7 @@ def test_handle_platforms_platform_response(mock_platform_web_service, platform)
     with mock.patch('builtins.open', mock.mock_open(read_data=json.dumps({'other_instance_name': {}}))):
         response = vui_endpoints.handle_platforms_platform(env, {})
         if platform in ['my_instance_name', 'other_instance_name']:
-            check_route_options_return(response, leading_path=path)
+            check_links_return(response, leading_path=path)
         else:
             assert '400' in response.status
 
@@ -322,16 +329,16 @@ def _mock_agents_rpc(peer, meth, *args, external_platform=None, **kwargs):
                     'groups': {},
                     'roles': {},
                     'version': {'major': 1, 'minor': 3}}
-    if peer == 'config.store' and meth == 'manage_get':
+    if peer == 'config.store' and meth == 'get_config':
         config_list = [a['configs'].get(args[1]) for a in config_definition_list if a['identity'] == args[0]]
         if not config_list or config_list == [None]:
             raise RemoteError(f'''builtins.KeyError('No configuration file \"{args[1]}\" for VIP IDENTIY {args[0]}')''',
                               exc_info={"exc_type": '', "exc_args": []})
         return config_list[0] if config_list else []
-    elif peer == 'config.store' and meth == 'manage_list_configs':
+    elif peer == 'config.store' and meth == 'list_configs':
         config_list = [a['configs'].keys() for a in config_definition_list if a['identity'] == args[0]]
         return config_list[0] if config_list else []
-    elif peer == 'config.store' and meth == 'manage_list_stores':
+    elif peer == 'config.store' and meth == 'list_stores':
         return [a['identity'] for a in config_definition_list]
     elif peer == 'control' and meth == 'list_agents':
         return list_of_agents
@@ -354,6 +361,13 @@ def _mock_agents_rpc(peer, meth, *args, external_platform=None, **kwargs):
         return [*args]
     elif peer == 'platform.auth' and meth == 'auth_file.read':
         return auth_dict
+    elif peer == 'platform.health' and meth == 'get_platform_health':
+        return {'control': {'peer': 'control', 'service_agent': True, 'connected': '2022-03-27T11:38:42.902620',
+                            'last_heartbeat': '2022-03-27T11:46:42.934051', 'message': 'GOOD'},
+                'run1': {'peer': 'run1', 'service_agent': False, 'connected': '2022-03-27T11:38:42.905573',
+                         'last_heartbeat': '2022-03-27T11:46:42.934098', 'message': 'GOOD'}}
+    elif peer == 'run1' and meth == 'health.get_status':
+        return {'status': 'GOOD', 'context': None, 'last_updated': '2022-03-27T15:41:32.293441+00:00'}
 
 
 @pytest.mark.parametrize(
@@ -402,7 +416,7 @@ def test_handle_platforms_agents_response(mock_platform_web_service, platform, a
     with mock.patch('builtins.open', mock.mock_open(read_data=json.dumps({'other_instance_name': {}}))):
         response = vui_endpoints.handle_platforms_agents(env, {})
         if platform in ['my_instance_name', 'other_instance_name']:
-            check_route_options_return(response, keys=expected, leading_path=path)
+            check_links_return(response, keys=expected, leading_path=path)
         else:
             assert '400' in response.status
 
@@ -417,17 +431,18 @@ def test_handle_platforms_agents_agent_status_code(mock_platform_web_service, me
 
 
 @pytest.mark.parametrize('vip_identity, expected', [
-    ('running.agent', ['configs', 'rpc']),
-    ('stopped.agent', ['configs'])
+    ('run1', ['configs', 'enabled', 'rpc', 'running', 'status', 'tag']),
+    ('stopped1', ['configs', 'enabled', 'running', 'status', 'tag']),
+    ('not.installed.agent', ['configs'])
     ])
 def test_handle_platforms_agents_agent_response(mock_platform_web_service, vip_identity, expected):
     path = f'/vui/platforms/my_instance_name/agents/{vip_identity}'
     env = get_test_web_env(path, method='GET', HTTP_AUTHORIZATION='BEARER foo')
     vui_endpoints = VUIEndpoints(mock_platform_web_service)
     vui_endpoints.active_routes = ACTIVE_ROUTES
-    vui_endpoints._get_agents = lambda platform, status: ['running.agent']
+    vui_endpoints._rpc = _mock_agents_rpc
     response = vui_endpoints.handle_platforms_agents_agent(env, {})
-    check_route_options_return(response, keys=expected, leading_path=path)
+    check_links_return(response, keys=expected, leading_path=path)
 
 
 @pytest.mark.parametrize("method, status", gen_response_codes(['GET'], ['POST', 'DELETE']))
@@ -452,9 +467,9 @@ def test_handle_platforms_agents_configs_config_status_code(mock_platform_web_se
 
 @pytest.mark.parametrize("vip_identity, expected", [
     ('-', ["run1", "run2"]),
-    ('run1', {"route_options": {"config1": "/vui/platforms/my_instance_name/agents/run1/configs/config1",
+    ('run1', {"links": {"config1": "/vui/platforms/my_instance_name/agents/run1/configs/config1",
                                 "config2": "/vui/platforms/my_instance_name/agents/run1/configs/config2"}}),
-    ('does_not_exist',  {"route_options": {}})  #needs to be changed as code is changed
+    ('does_not_exist',  {"links": {}})  #needs to be changed as code is changed
 ])
 def test_handle_platforms_agents_configs_get_response(mock_platform_web_service, vip_identity, expected):
     path = f'/vui/platforms/my_instance_name/agents/{vip_identity}/configs'
@@ -504,7 +519,7 @@ def test_handle_platforms_agents_configs_config_put_response(mock_platform_web_s
     config_type = re.search(r'([^\/]+$)', config_type).group() if config_type in ['application/json',
                                                                                   'text/csv'] else 'raw'
     if status == '204':
-        vui_endpoints._rpc.assert_has_calls([mock.call('config.store', 'manage_store', vip_identity, config_name,
+        vui_endpoints._rpc.assert_has_calls([mock.call('config.store', 'set_config', vip_identity, config_name,
                                                        data_passed, config_type, external_platform='my_instance_name')])
     elif status == '400':
         assert json.loads(response.response[0]) == \
@@ -534,7 +549,7 @@ def test_handle_platforms_agents_configs_post_response(mock_platform_web_service
     response = vui_endpoints.handle_platforms_agents_configs(env, data_given)
     check_response_codes(response, status)
     if status == '204':
-        vui_endpoints._rpc.assert_has_calls([mock.call('config.store', 'manage_store', vip_identity, config_name,
+        vui_endpoints._rpc.assert_has_calls([mock.call('config.store', 'set_config', vip_identity, config_name,
                                                        data_passed, config_type, external_platform='my_instance_name')])
     elif status == '400':
         assert json.loads(response.response[0]) == \
@@ -556,7 +571,7 @@ def test_handle_platforms_agents_configs_delete_response(mock_platform_web_servi
     response = vui_endpoints.handle_platforms_agents_configs(env, {})
     check_response_codes(response, status)
     if status == '204':
-        vui_endpoints._rpc.assert_has_calls([mock.call('config.store', 'manage_delete_store', vip_identity_passed,
+        vui_endpoints._rpc.assert_has_calls([mock.call('config.store', 'delete_store', vip_identity_passed,
                                                        external_platform='my_instance_name')])
 
 
@@ -572,7 +587,7 @@ def test_handle_platforms_agents_configs_config_delete_response(mock_platform_we
     response = vui_endpoints.handle_platforms_agents_configs(env, {})
     check_response_codes(response, status)
     if status == '204':
-        vui_endpoints._rpc.assert_has_calls([mock.call('config.store', 'manage_delete_config', vip_identity,
+        vui_endpoints._rpc.assert_has_calls([mock.call('config.store', 'delete_config', vip_identity,
                                                        config_name_passed, external_platform='my_instance_name')])
 
 
@@ -587,9 +602,9 @@ def test_handle_platforms_agents_enabled_status_code(mock_platform_web_service, 
 
 
 @pytest.mark.parametrize('vip_identity, expected', [
-    ('run1', {'status': 'False', 'priority': 'None'}),
-    ('run2', {'status': 'True', 'priority': '50'}),
-    ('stopped2', {'status': 'True', 'priority': '35'}),
+    ('run1', {'status': False, 'priority': None}),
+    ('run2', {'status': True, 'priority': 50}),
+    ('stopped2', {'status': True, 'priority': 35}),
     ('not_exist', {'error': 'Agent "not_exist" not found.'})])
 def test_handle_platforms_agents_enabled_get_response(mock_platform_web_service, vip_identity, expected):
     path = f'/vui/platforms/my_instance_name/agents/{vip_identity}/enabled'
@@ -651,7 +666,7 @@ def test_handle_platforms_agents_rpc_response(mock_platform_web_service):
     vui_endpoints = VUIEndpoints(mock_platform_web_service)
     vui_endpoints._rpc = _mock_agents_rpc
     response = vui_endpoints.handle_platforms_agents_rpc(env, {})
-    check_route_options_return(response, ['list_agents', 'peerlist', 'status_agents'], leading_path=path)
+    check_links_return(response, ['list_agents', 'peerlist', 'status_agents'], leading_path=path)
 
 
 @pytest.mark.parametrize("method, status", gen_response_codes(['GET', 'POST']))
@@ -744,7 +759,7 @@ def test_handle_platforms_agents_running_put_response(mock_platform_web_service,
         else:
             vui_endpoints._rpc.assert_has_calls([mock.call('control', 'identity_exists', vip_identity,
                                                            external_platform='my_instance_name'),
-                                                mock.call('control', 'peerlist'),
+                                                mock.call('control', 'peerlist', external_platform='my_instance_name'),
                                                 mock.call('control', 'start_agent', uuid,
                                                           external_platform='my_instance_name')])
 
@@ -766,6 +781,50 @@ def test_handle_platforms_agents_running_delete_response(mock_platform_web_servi
                                                        external_platform='my_instance_name'),
                                              mock.call('control', 'stop_agent', uuid,
                                                        external_platform='my_instance_name')])
+
+
+@pytest.mark.parametrize("method, status", gen_response_codes(['GET']))
+def test_handle_platforms_agents_health_status_code(mock_platform_web_service, method, status):
+    env = get_test_web_env(f'/vui/platforms/my_instance_name/agents/run1/health', method=method,
+                           HTTP_AUTHORIZATION='Bearer foo')
+    vui_endpoints = VUIEndpoints(mock_platform_web_service)
+    vui_endpoints._rpc = _mock_agents_rpc
+    response = vui_endpoints.handle_platforms_agents_health(env, {})
+    check_response_codes(response, status)
+
+
+@pytest.mark.parametrize("vip_identity, expected", [
+    ('run1', {'status': 'GOOD', 'context': None, 'last_updated': '2022-03-27T15:41:32.293441+00:00'}),
+    ('stopped1', {'error': f'No agent "stopped1" is running.'}),
+    ('not_exist', {'error': 'No agent "not_exist" is running.'})])
+def test_handle_platforms_agents_health_get_response(mock_platform_web_service, vip_identity, expected):
+    path = f'/vui/platforms/my_instance_name/agents/{vip_identity}/health'
+    env = get_test_web_env(path, method='GET', HTTP_AUTHORIZATION='Bearer foo')
+    vui_endpoints = VUIEndpoints(mock_platform_web_service)
+    vui_endpoints._rpc = _mock_agents_rpc
+    response = vui_endpoints.handle_platforms_agents_health(env, {})
+    assert json.loads(response.response[0]) == expected
+
+
+@pytest.mark.parametrize("method, status", gen_response_codes(['GET']))
+def test_handle_platforms_health_status_code(mock_platform_web_service, method, status):
+    env = get_test_web_env('/vui/platforms/my_instance_name/health', method=method,
+                           HTTP_AUTHORIZATION='Bearer foo')
+    vui_endpoints = VUIEndpoints(mock_platform_web_service)
+    vui_endpoints._rpc = _mock_agents_rpc
+    response = vui_endpoints.handle_platforms_health(env, {})
+    check_response_codes(response, status)
+
+
+def test_handle_platforms_health_get_response(mock_platform_web_service):
+    path = f'/vui/platforms/my_instance_name/health'
+    env = get_test_web_env(path, method='GET', HTTP_AUTHORIZATION='Bearer foo')
+    vui_endpoints = VUIEndpoints(mock_platform_web_service)
+    vui_endpoints._rpc = _mock_agents_rpc
+    response = vui_endpoints.handle_platforms_health(env, {})
+    actual = json.loads(response.response[0])
+    assert isinstance(actual, dict)
+    assert all([isinstance(x, dict) for x in actual.values()])
 
 
 @pytest.mark.parametrize("method, status", gen_response_codes(['GET'], []))
@@ -2907,7 +2966,7 @@ def test_handle_platforms_devices_get_response(mock_platform_web_service, topic,
             seg_number = 0 if topic == '' else len(topic.split('/'))
             _log.debug(f'SEG_NUMBER is: {seg_number}')
             keys = [list_topic.split('/')[seg_number] for list_topic in DEVICE_TOPIC_LIST]
-            check_route_options_return(response, list(set(keys)))
+            check_links_return(response, list(set(keys)))
         else:
             body = json.loads(response.response[0])
             assert isinstance(body, dict)
@@ -3042,7 +3101,7 @@ def test_handle_platforms_historians_response(mock_platform_web_service):
     vui_endpoints = VUIEndpoints(mock_platform_web_service)
     vui_endpoints._get_agents = lambda x: ['platform.other', 'foo.historian', 'random.agent', 'platform.historian']
     response = vui_endpoints.handle_platforms_historians(env, {})
-    check_route_options_return(response, ['platform.historian', 'foo.historian'], leading_path=path)
+    check_links_return(response, ['platform.historian', 'foo.historian'], leading_path=path)
 
 
 @pytest.mark.parametrize("method, status", gen_response_codes(['GET']))
@@ -3059,7 +3118,7 @@ def test_handle_platforms_historians_historian_response(mock_platform_web_servic
     env = get_test_web_env(path, method='GET', HTTP_AUTHORIZATION='BEARER foo')
     vui_endpoints = VUIEndpoints(mock_platform_web_service)
     response = vui_endpoints.handle_platforms_historians_historian(env, {})
-    check_route_options_return(response, ['topics'], leading_path=path)
+    check_links_return(response, ['topics'], leading_path=path)
 
 
 @pytest.mark.parametrize("method, status", gen_response_codes(['GET']))
@@ -3092,7 +3151,7 @@ def test_handle_platforms_historians_historian_topics_get_response(mock_platform
         seg_number = 0 if topic == '' else len(topic.split('/'))
         keys = [list_topic.split('/')[seg_number] for list_topic in HISTORIAN_TOPIC_LIST]
         _log.debug(f'KEYS IS: {keys}')
-        check_route_options_return(response, list(set(keys)))
+        check_links_return(response, list(set(keys)))
     else:
         body = json.loads(response.response[0])
         assert isinstance(body, dict)
