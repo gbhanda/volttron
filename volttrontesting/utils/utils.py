@@ -17,7 +17,11 @@ from volttron.platform.messaging import headers as headers_mod
 def is_running_in_container():
     # type: () -> bool
     """ Determines if we're running in an lxc/docker container. """
-    out = subprocess.check_output('cat /proc/1/sched', shell=True)
+    try:
+        out = subprocess.check_output('cat /proc/1/sched', shell=True)
+    # Raises exception if non-zero output is returned.
+    except subprocess.CalledProcessError:
+        return False
     out = out.decode('utf-8').lower()
     checks = [
         'docker' in out,
@@ -130,7 +134,7 @@ def build_devices_header_and_message(points=['abc', 'def']):
 
     for point in points:
         data[point] = random() * 10
-        meta_data[point] = meta_templates[randint(0,len(meta_templates)-1)]
+        meta_data[point] = meta_templates[randint(0, len(meta_templates)-1)]
 
     time1 = utils.format_timestamp( datetime.utcnow())
     headers = {

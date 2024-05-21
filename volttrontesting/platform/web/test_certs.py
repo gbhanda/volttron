@@ -3,7 +3,7 @@ import os
 import pytest
 import shutil
 from pathlib import Path
-from volttron.platform.certs import Certs, Subject, CertError
+from volttron.platform.auth.certs import Certs, Subject, CertError
 from volttron.platform.agent.utils import get_platform_instance_name
 from volttrontesting.utils.platformwrapper import create_volttron_home
 from volttrontesting.utils import certs_utils
@@ -60,8 +60,8 @@ mgmt-port-ssl: '15671'
 # defaults to true
 ssl: 'true'
 
-# defaults to ~/rabbitmq_server/rabbbitmq_server-3.9.7
-rmq-home: "~/rabbitmq_server/rabbitmq_server-3.9.7"
+# defaults to ~/rabbitmq_server/rabbbitmq_server-3.9.29
+rmq-home: "~/rabbitmq_server/rabbitmq_server-3.9.29"
 """
 
 
